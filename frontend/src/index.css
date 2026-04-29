@@ -19,3 +19,20 @@ body {
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+.perspective {
+  perspective: 1000px;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  transition: all 0.3s ease;
+}

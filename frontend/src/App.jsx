@@ -5,7 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Learn from "./pages/Learn";
 import Review from "./pages/Review";
 import Stats from "./pages/Stats";
-import Settings from "./pages/Setting";
+import Settings from "./pages/Settings";
 
 function App() {
   return (

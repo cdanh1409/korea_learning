@@ -1,5 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Card from "../components/common/Card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 export default function Stats() {
   const [statsData, setStatsData] = useState({
@@ -11,12 +22,10 @@ export default function Stats() {
 
   const [weeklyScore, setWeeklyScore] = useState([]);
 
+  // ================= LOAD =================
   useEffect(() => {
     fetch("http://localhost:5000/api/stats")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("API error");
-        return res.json();
-      })
+      .then((res) => res.json())
       .then((data) => {
         setStatsData({
           totalWords: data?.totalWords ?? 0,
@@ -27,64 +36,207 @@ export default function Stats() {
 
         setWeeklyScore(data?.weeklyScore ?? []);
       })
-      .catch((err) => console.log("Stats API error:", err));
+      .catch(console.log);
   }, []);
 
+  // ================= DERIVED =================
+  const progress =
+    statsData.totalWords > 0
+      ? Math.round((statsData.masteredWords / statsData.totalWords) * 100)
+      : 0;
+
+  const trendData = useMemo(() => {
+    return Array.isArray(weeklyScore)
+      ? weeklyScore.map((v, i) => ({
+          day: `D${i + 1}`,
+          score: v,
+        }))
+      : [];
+  }, [weeklyScore]);
+
+  // ===== PIE DATA (DONUT) =====
+  const total = statsData.masteredWords + statsData.weakWords;
+
+  const pieData = [
+    { name: "TOPIK I (1-2)", value: statsData.masteredWords },
+    { name: "TOPIK II (3-4)", value: statsData.weakWords },
+  ];
+
+  const COLORS = ["#4f7cff", "#ff7a2f"];
+
+  const renderLabel = ({ percent }) => `${(percent * 100).toFixed(1)}%`;
+
+  const avgLevel =
+    statsData.avgScore >= 7
+      ? "text-green-500"
+      : statsData.avgScore >= 4
+        ? "text-yellow-500"
+        : "text-red-500";
+
+  const insight = useMemo(() => {
+    if (progress >= 80) return "🔥 Bạn đang học rất tốt!";
+    if (progress >= 50) return "📈 Tiến độ ổn định, giữ nhịp!";
+    if (progress >= 20) return "⚠️ Cần tăng tần suất học!";
+    return "🧠 Hãy bắt đầu học đều hơn!";
+  }, [progress]);
+
   return (
-    <div className="space-y-6">
-      {/* ================= HEADER ================= */}
-      <div className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white p-6 rounded-2xl">
-        <h1 className="text-2xl font-bold">📊 Thống kê học tập</h1>
-        <p className="text-white/80">Theo dõi tiến độ học từ vựng TOPIK</p>
-      </div>
-
-      {/* ================= STATS CARDS ================= */}
-      <div className="grid grid-cols-4 gap-4">
+    <div className="p-6 space-y-6 w-full bg-[var(--bg)] text-[var(--text)]">
+      {/* TOP */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
-          <h3 className="font-semibold">Tổng từ</h3>
-          <p className="text-3xl font-bold mt-2">{statsData.totalWords}</p>
+          <h3 className="font-semibold mb-2">🧠 AI Insight</h3>
+          <p style={{ color: "var(--muted)" }}>{insight}</p>
         </Card>
 
         <Card>
-          <h3 className="font-semibold">Đã thuộc</h3>
-          <p className="text-3xl font-bold mt-2 text-green-500">
+          <h3 className="font-semibold mb-3">📌 Breakdown</h3>
+          <div className="space-y-2 text-sm">
+            <Row label="Mastery Rate" value={`${progress}%`} />
+            <Row
+              label="Weak Ratio"
+              value={`${Math.round(
+                (statsData.weakWords / (statsData.totalWords || 1)) * 100,
+              )}%`}
+            />
+            <Row label="Avg Score" value={statsData.avgScore.toFixed(1)} />
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="font-semibold mb-3">🎯 Status</h3>
+          <p style={{ color: "var(--muted)" }}>
+            {progress >= 80
+              ? "Bạn đang ở level cao 👍"
+              : progress >= 50
+                ? "Đang tiến bộ ổn định 📈"
+                : "Cần học đều hơn 🚀"}
+          </p>
+        </Card>
+      </div>
+
+      {/* STATS */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <p style={{ color: "var(--muted)" }}>Tổng từ</p>
+          <h2 className="text-3xl font-bold">{statsData.totalWords}</h2>
+        </Card>
+
+        <Card>
+          <p style={{ color: "var(--muted)" }}>Đã thuộc</p>
+          <h2 className="text-3xl font-bold text-green-500">
             {statsData.masteredWords}
-          </p>
+          </h2>
         </Card>
 
         <Card>
-          <h3 className="font-semibold">Cần ôn</h3>
-          <p className="text-3xl font-bold mt-2 text-red-500">
+          <p style={{ color: "var(--muted)" }}>Cần ôn</p>
+          <h2 className="text-3xl font-bold text-red-500">
             {statsData.weakWords}
-          </p>
+          </h2>
         </Card>
 
         <Card>
-          <h3 className="font-semibold">Điểm TB</h3>
-          <p className="text-3xl font-bold mt-2 text-purple-500">
-            {statsData.avgScore}
-          </p>
+          <p style={{ color: "var(--muted)" }}>Điểm TB</p>
+          <h2 className={`text-3xl font-bold ${avgLevel}`}>
+            {statsData.avgScore.toFixed(1)}
+          </h2>
         </Card>
       </div>
 
-      {/* ================= CHART ================= */}
+      {/* PROGRESS */}
       <Card>
-        <h3 className="font-semibold mb-3">Điểm 7 ngày gần nhất</h3>
+        <div className="flex justify-between mb-2">
+          <span style={{ color: "var(--muted)" }}>Mastery Progress</span>
+          <span className="font-bold">{progress}%</span>
+        </div>
 
-        <div className="h-40 flex items-end gap-2">
-          {weeklyScore.length > 0 ? (
-            weeklyScore.map((value, index) => (
-              <div
-                key={index}
-                className="flex-1 bg-indigo-400 rounded-t-lg"
-                style={{ height: `${value * 5}px` }}
-              />
-            ))
-          ) : (
-            <p className="text-gray-400">Chưa có dữ liệu</p>
-          )}
+        <div className="w-full h-2 rounded-full bg-[var(--card2)] overflow-hidden">
+          <div
+            className="h-2 rounded-full transition-all duration-500"
+            style={{
+              width: `${progress}%`,
+              background: "var(--primary)",
+            }}
+          />
         </div>
       </Card>
+
+      {/* ==== 2 CARD RIÊNG ==== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* BAR CARD */}
+        <Card>
+          <h3 className="font-semibold mb-4">📈 Weekly Performance</h3>
+
+          <div className="overflow-x-auto">
+            {trendData.length > 0 ? (
+              <BarChart width={600} height={300} data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="day" stroke="var(--muted)" />
+                <YAxis stroke="var(--muted)" />
+                <Tooltip />
+                <Bar dataKey="score" fill="var(--primary)" />
+              </BarChart>
+            ) : (
+              <p style={{ color: "var(--muted)" }}>Chưa có dữ liệu biểu đồ</p>
+            )}
+          </div>
+        </Card>
+
+        {/* PIE CARD */}
+        <Card>
+          <h3 className="font-semibold mb-4">📊 Phân bố trình độ</h3>
+
+          <div className="flex justify-center items-center gap-6">
+            <PieChart width={350} height={300}>
+              <Pie
+                data={pieData}
+                cx="40%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={100}
+                paddingAngle={2}
+                dataKey="value"
+                label={renderLabel}
+              >
+                {pieData.map((entry, index) => (
+                  <Cell key={index} fill={COLORS[index]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+
+            {/* LEGEND CUSTOM */}
+            <div className="space-y-2 text-sm">
+              {pieData.map((item, index) => {
+                const percent =
+                  total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
+
+                return (
+                  <div key={index} className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ background: COLORS[index] }}
+                    />
+                    <span>
+                      <b>{item.name}</b> &nbsp; {percent}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between">
+      <span style={{ color: "var(--muted)" }}>{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   );
 }
