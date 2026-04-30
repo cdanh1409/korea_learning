@@ -37,16 +37,52 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/dashboard/summary")
-      .then((res) => res.json())
-      .then((data) => {
-        setStats(data?.stats || stats);
-        setWeeklyData(data?.weeklyData || []);
-        setTopik(data?.topik || topik);
-        setWeekGoal(data?.weekGoal || weekGoal);
-      })
-      .catch(() => {});
-  }, []);
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/dashboard/summary", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) throw new Error("API error");
+
+        const data = await res.json();
+
+        setStats(
+          data?.stats ?? {
+            weekNew: 0,
+            weekReview: 0,
+            goalNew: 60,
+            goalReview: 50,
+            streak: 0,
+          },
+        );
+
+        setWeeklyData(data?.weeklyData ?? []);
+        setTopik(data?.topik ?? { level12: 0, level34: 0 });
+
+        setWeekGoal(
+          data?.weekGoal ?? {
+            new: { current: 0, total: 60 },
+            review: { current: 0, total: 50 },
+            exercise: { current: 0, total: 20 },
+          },
+        );
+      } catch (err) {
+        console.log("Dashboard error:", err);
+      }
+    };
+
+    fetchData();
+  }, [navigate]);
 
   const progress = stats.goalNew
     ? Math.round((stats.weekNew / stats.goalNew) * 100)
@@ -64,13 +100,12 @@ export default function Dashboard() {
 
   const COLORS = ["var(--primary)", "var(--muted)"];
 
+  const totalTopik = topik.level12 + topik.level34;
+
   return (
     <div
       className="p-6 space-y-6 min-h-screen"
-      style={{
-        background: "var(--bg)",
-        color: "var(--text)",
-      }}
+      style={{ background: "var(--bg)", color: "var(--text)" }}
     >
       {/* ================= HERO ================= */}
       <div
@@ -80,7 +115,6 @@ export default function Dashboard() {
           borderColor: "var(--border)",
         }}
       >
-        {/* glow */}
         <div
           className="absolute -top-20 -right-20 w-[300px] h-[300px] blur-3xl opacity-20"
           style={{ background: "var(--primary)" }}
@@ -171,19 +205,12 @@ export default function Dashboard() {
 
       {/* ================= CHART ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* LINE CHART */}
+        {/* LINE */}
         <Card className="lg:col-span-2">
           <h3 className="font-semibold mb-3">📈 7 ngày gần nhất</h3>
 
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={chartData}>
-              <defs>
-                <linearGradient id="lineColor">
-                  <stop offset="0%" stopColor="var(--primary)" />
-                  <stop offset="100%" stopColor="transparent" />
-                </linearGradient>
-              </defs>
-
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--border)"
@@ -193,32 +220,21 @@ export default function Dashboard() {
               <XAxis dataKey="day" stroke="var(--muted)" />
               <YAxis stroke="var(--muted)" />
 
-              <Tooltip
-                contentStyle={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "12px",
-                }}
-              />
+              <Tooltip />
 
               <Line
                 type="monotone"
                 dataKey="words"
                 stroke="var(--primary)"
                 strokeWidth={3}
-                dot={{
-                  r: 4,
-                  fill: "var(--primary)",
-                  stroke: "#fff",
-                  strokeWidth: 2,
-                }}
+                dot={{ r: 4 }}
                 activeDot={{ r: 7 }}
               />
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
-        {/* PIE CHART */}
+        {/* PIE - FIX FULL UI */}
         <Card>
           <h3 className="font-semibold mb-3">🎯 TOPIK</h3>
 
@@ -237,7 +253,7 @@ export default function Dashboard() {
                 ))}
               </Pie>
 
-              {/* CENTER */}
+              {/* CENTER TEXT (RESTORED FULL UI) */}
               <text
                 x="50%"
                 y="45%"
@@ -246,7 +262,7 @@ export default function Dashboard() {
                 fill="var(--text)"
                 fontWeight="bold"
               >
-                {topik.level12 + topik.level34}
+                {totalTopik}
               </text>
 
               <text

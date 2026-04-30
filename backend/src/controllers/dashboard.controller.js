@@ -4,9 +4,13 @@ exports.getDashboard = async (req, res) => {
   try {
     await poolConnect;
 
-    const userId = 1;
+    const userId = req.user?.id;
 
-    // ================= LAST 7 DAYS DATA =================
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // ================= LAST 7 DAYS =================
     const weekRes = await pool.request().input("userId", sql.Int, userId)
       .query(`
         SELECT 
@@ -22,17 +26,32 @@ exports.getDashboard = async (req, res) => {
 
     const weekMap = weekRes.recordset || [];
 
-    const weeklyData = weekMap.map((x) => Number(x.learned || 0));
+    // ================= FIX 7 DAYS FULL =================
+    const weeklyData = [];
 
-    const totalNewWeek = weekMap.reduce((s, x) => s + (x.learned || 0), 0);
-    const totalReviewWeek = weekMap.reduce((s, x) => s + (x.reviewed || 0), 0);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
 
-    // ================= TODAY (derived from week) =================
-    const todayData = weekMap.find(
-      (x) =>
-        new Date(x.day).toISOString().split("T")[0] ===
-        new Date().toISOString().split("T")[0],
-    ) || { learned: 0, reviewed: 0 };
+      const found = weekMap.find((x) => {
+        const xDate = new Date(x.day).toISOString().slice(0, 10);
+        return xDate === dateStr;
+      });
+
+      weeklyData.push(found ? found.learned : 0);
+    }
+
+    const weekNew = weekMap.reduce((s, x) => s + (x.learned || 0), 0);
+    const weekReview = weekMap.reduce((s, x) => s + (x.reviewed || 0), 0);
+
+    // ================= TODAY =================
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const todayData = weekMap.find((x) => {
+      const xDate = new Date(x.day).toISOString().slice(0, 10);
+      return xDate === todayStr;
+    }) || { learned: 0, reviewed: 0 };
 
     // ================= STREAK =================
     const streakRes = await pool.request().input("userId", sql.Int, userId)
@@ -43,7 +62,7 @@ exports.getDashboard = async (req, res) => {
         ORDER BY reviewDate DESC
       `);
 
-    const dates = streakRes.recordset.map((r) => r.reviewDate);
+    const dates = streakRes.recordset.map((r) => new Date(r.reviewDate));
 
     let streak = 0;
 
@@ -61,16 +80,22 @@ exports.getDashboard = async (req, res) => {
       else break;
     }
 
-    // ================= TOPIK =================
-    const topikRes = await pool.request().query(`
-      SELECT 
-        SUM(CASE WHEN Level <= 2 THEN 1 ELSE 0 END) AS level12,
-        SUM(CASE WHEN Level >= 3 THEN 1 ELSE 0 END) AS level34
-      FROM Vocabulary
-    `);
+    // ================= TOPIK (FIXED - USER BASED) =================
+    const topikRes = await pool.request().input("userId", sql.Int, userId)
+      .query(`
+        SELECT 
+          SUM(CASE WHEN v.Level <= 2 THEN 1 ELSE 0 END) AS level12,
+          SUM(CASE WHEN v.Level >= 3 THEN 1 ELSE 0 END) AS level34
+        FROM UserVocabularyProgress p
+        JOIN Vocabulary v ON v.Id = p.VocabularyId
+        WHERE p.UserId = @userId
+      `);
 
-    const t = topikRes.recordset[0];
-    const total = (t.level12 || 0) + (t.level34 || 0);
+    const t = topikRes.recordset?.[0] || {};
+
+    const level12 = t.level12 || 0;
+    const level34 = t.level34 || 0;
+    const total = level12 + level34;
 
     // ================= WEEK GOAL =================
     const goalRes = await pool.request().input("userId", sql.Int, userId)
@@ -81,16 +106,16 @@ exports.getDashboard = async (req, res) => {
         ORDER BY WeekStart DESC
       `);
 
-    const goal = goalRes.recordset[0] || {};
+    const goal = goalRes.recordset?.[0] || {};
 
-    // ================= RESPONSE CLEAN =================
+    // ================= RESPONSE =================
     res.json({
       stats: {
         todayNew: todayData.learned,
         todayReview: todayData.reviewed,
 
-        weekNew: totalNewWeek,
-        weekReview: totalReviewWeek,
+        weekNew,
+        weekReview,
 
         goalNew: goal.TargetNewWords || 60,
         goalReview: goal.TargetReview || 50,
@@ -101,27 +126,27 @@ exports.getDashboard = async (req, res) => {
       weeklyData,
 
       topik: {
-        level12: total ? Math.round((t.level12 / total) * 100) : 0,
-        level34: total ? Math.round((t.level34 / total) * 100) : 0,
+        level12: total ? Math.round((level12 / total) * 100) : 0,
+        level34: total ? Math.round((level34 / total) * 100) : 0,
       },
 
       weekGoal: {
         new: {
-          current: totalNewWeek,
+          current: weekNew,
           total: goal.TargetNewWords || 60,
         },
         review: {
-          current: totalReviewWeek,
+          current: weekReview,
           total: goal.TargetReview || 50,
         },
         exercise: {
-          current: goal.CurrentExercise || 10,
+          current: goal.CurrentExercise || 0,
           total: goal.TargetExercise || 20,
         },
       },
     });
   } catch (err) {
-    console.error("Dashboard error:", err);
+    console.error("❌ Dashboard error:", err);
     res.status(500).json({ error: "server error" });
   }
 };

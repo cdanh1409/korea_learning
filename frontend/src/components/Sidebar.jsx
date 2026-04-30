@@ -6,6 +6,7 @@ import {
   Brain,
   List,
   Settings,
+  LogOut,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -22,6 +23,13 @@ const menu = [
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handleLogout = () => {
+    if (window.confirm("Bạn có chắc muốn đăng xuất không?")) {
+      localStorage.removeItem("token");
+      navigate("/login");
+    }
+  };
 
   return (
     <div
@@ -44,18 +52,18 @@ export default function Sidebar() {
             <div
               key={index}
               onClick={() => navigate(item.path)}
-              className={`
+              className="
                 flex items-center gap-3 px-3 py-2
                 rounded-xl cursor-pointer
                 transition-all duration-200
                 relative overflow-hidden
                 group
-              `}
+              "
               style={{
                 background: isActive ? "var(--card2)" : "transparent",
               }}
             >
-              {/* hover glow layer */}
+              {/* hover glow */}
               <div
                 className="absolute inset-0 opacity-0 group-hover:opacity-100 transition"
                 style={{
@@ -80,7 +88,6 @@ export default function Sidebar() {
                 {item.label}
               </span>
 
-              {/* ACTIVE INDICATOR (glow bar) */}
               {isActive && (
                 <div
                   className="ml-auto w-1.5 h-6 rounded-full relative z-10"
@@ -93,6 +100,36 @@ export default function Sidebar() {
             </div>
           );
         })}
+      </div>
+
+      {/* ================= LOGOUT ================= */}
+      <div className="mt-3">
+        <div
+          onClick={handleLogout}
+          className="
+            flex items-center gap-3 px-3 py-2
+            rounded-xl cursor-pointer
+            transition-all duration-200
+            relative overflow-hidden
+            group
+            hover:bg-red-500/10
+          "
+        >
+          {/* hover red glow */}
+          <div
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition"
+            style={{
+              background: "#ef4444",
+              opacity: 0.08,
+            }}
+          />
+
+          <LogOut size={18} style={{ color: "#ef4444" }} />
+
+          <span className="text-sm relative z-10" style={{ color: "#ef4444" }}>
+            Đăng xuất
+          </span>
+        </div>
       </div>
     </div>
   );
