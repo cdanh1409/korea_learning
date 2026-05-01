@@ -1,6 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Card from "../components/common/Card";
 import api from "../utils/api";
+import { motion, AnimatePresence } from "framer-motion";
 
 // ================= SHUFFLE =================
 const shuffleArray = (arr = []) => {
@@ -16,238 +17,406 @@ export default function Review() {
   const [topics, setTopics] = useState([]);
   const [words, setWords] = useState([]);
 
-  const [todayCount, setTodayCount] = useState(0);
-  const [memoryRate, setMemoryRate] = useState(0);
-  const [streak, setStreak] = useState(0);
-
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+
   const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [loadingWords, setLoadingWords] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [notice, setNotice] = useState(null);
+  const [answerResult, setAnswerResult] = useState(null);
+  // "easy" | "again" | null
 
-  const currentWord = words?.[currentIndex] || null;
+  const [stats, setStats] = useState({
+    easy: 0,
+    again: 0,
+    skip: 0,
+  });
 
-  const hasWords = Array.isArray(words) && words.length > 0;
+  const [dashboard, setDashboard] = useState({
+    due: 0,
+    rate: 0,
+    streak: 0,
+  });
 
-  const isDone =
-    selectedTopic &&
-    Array.isArray(words) &&
-    words.length > 0 &&
-    currentIndex >= words.length;
+  const [emptyTopic, setEmptyTopic] = useState(false);
 
-  const isLearning = selectedTopic && hasWords && !isDone;
+  const timeoutRef = useRef(null);
+  const lockRef = useRef(false);
 
-  // ================= LOAD INIT =================
+  const currentWord = words[currentIndex];
+
+  // ================= FINISHED (NO EFFECT - FIX ESLINT) =================
+  const finished =
+    selectedTopic && words.length > 0 && currentIndex >= words.length;
+
+  // ================= LOAD DASHBOARD =================
   useEffect(() => {
-    let ignore = false;
-
-    const load = async () => {
+    const loadDashboard = async () => {
       try {
-        const [topicsRes, todayRes, statsRes, streakRes] = await Promise.all([
-          api.get("/topics"),
-          api.get("/review/today"),
+        const [topicsRes, statsRes, streakRes] = await Promise.all([
+          api.get("/review/topics"),
           api.get("/review/stats"),
           api.get("/review/streak"),
         ]);
 
-        if (ignore) return;
+        const topicData = topicsRes.data || [];
 
-        setTopics(topicsRes.data || []);
-        setTodayCount(todayRes.data?.length || 0);
-        setMemoryRate(statsRes.data?.rate || 0);
-        setStreak(streakRes.data?.streak || 0);
+        setTopics(topicData);
+
+        setDashboard({
+          due: topicData.reduce((s, t) => s + (t.due || 0), 0),
+          rate: statsRes.data?.rate || 0,
+          streak: streakRes.data?.streak || 0,
+        });
       } catch (err) {
-        console.error("LOAD ERROR:", err);
+        console.error(err);
       }
     };
 
-    load();
-    return () => {
-      ignore = true;
-    };
+    loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeout(timeoutRef.current);
   }, []);
 
   // ================= CHOICES =================
   const choices = useMemo(() => {
-    if (!currentWord || !Array.isArray(words)) return [];
-
-    const sameTopic = words.filter((w) => w.TopicId === currentWord.TopicId);
-    const pool = sameTopic.filter((w) => w.Id !== currentWord.Id);
-    const fake = shuffleArray(pool).slice(0, 3);
-
-    return shuffleArray([...fake, currentWord]);
+    if (!currentWord) return [];
+    const pool = words.filter((w) => w.Id !== currentWord.Id);
+    return shuffleArray([...shuffleArray(pool).slice(0, 3), currentWord]);
   }, [currentWord, words]);
 
   // ================= SELECT TOPIC =================
   const handleSelectTopic = async (topic) => {
-    setNotice(null);
+    clearTimeout(timeoutRef.current);
+    lockRef.current = false;
+
     setSelectedTopic(topic);
     setCurrentIndex(0);
     setSelectedAnswer(null);
-    setLoadingWords(true);
-    setWords([]);
+    setAnswerResult(null);
+    setStats({ easy: 0, again: 0, skip: 0 });
+    setEmptyTopic(false);
 
-    try {
-      const res = await api.get(`/review?topicId=${topic.Id}`);
+    const res = await api.get(`/review?topicId=${topic.Id}`);
 
-      if (!Array.isArray(res.data) || res.data.length === 0) {
-        setNotice("Chủ đề chưa có từ để học");
-        setSelectedTopic(null);
-        setLoadingWords(false);
-        return;
-      }
-
-      setWords(shuffleArray(res.data));
-    } catch (err) {
-      console.error(err);
+    if (!res.data || res.data.length === 0) {
+      setWords([]);
+      setEmptyTopic(true);
+      return;
     }
 
-    setLoadingWords(false);
+    setWords(shuffleArray(res.data));
   };
 
   // ================= ANSWER =================
-  const handleAnswer = async (level) => {
-    if (!currentWord || isSubmitting) return;
+  const handleAnswer = async (type) => {
+    if (!currentWord || lockRef.current) return;
 
-    setIsSubmitting(true);
+    lockRef.current = true;
 
-    try {
-      await api.post("/review", {
-        id: currentWord.Id,
-        level,
-      });
+    await api.post("/review", {
+      id: currentWord.Id,
+      level: type,
+    });
 
-      setCurrentIndex((prev) => prev + 1);
+    setStats((prev) => ({
+      ...prev,
+      [type]: prev[type] + 1,
+    }));
+
+    clearTimeout(timeoutRef.current);
+
+    timeoutRef.current = setTimeout(() => {
+      setCurrentIndex((p) => p + 1);
       setSelectedAnswer(null);
-    } catch (err) {
-      console.error(err);
-    }
-
-    setIsSubmitting(false);
+      setAnswerResult(null); // reset effect màu
+      lockRef.current = false;
+    }, 450); // ⬅ tăng nhẹ để thấy effect
   };
 
   const handleSelectAnswer = (choice) => {
-    if (selectedAnswer || isSubmitting) return;
+    if (selectedAnswer || !currentWord) return;
+
+    const correct = choice.Id === currentWord.Id;
 
     setSelectedAnswer(choice.Id);
+    setAnswerResult(correct ? "easy" : "again");
 
-    setTimeout(() => {
-      handleAnswer(choice.Id === currentWord.Id ? "easy" : "again");
-    }, 200);
+    handleAnswer(correct ? "easy" : "again");
   };
 
-  const resetTopic = () => {
+  const handleSkip = () => {
+    if (!currentWord || lockRef.current) return;
+
+    setSelectedAnswer(null);
+    setAnswerResult("again");
+
+    handleAnswer("skip");
+  };
+
+  const resetReview = () => {
+    clearTimeout(timeoutRef.current);
+    lockRef.current = false;
+
     setSelectedTopic(null);
     setWords([]);
     setCurrentIndex(0);
     setSelectedAnswer(null);
-    setNotice(null);
+    setAnswerResult(null);
+    setStats({ easy: 0, again: 0, skip: 0 });
+    setEmptyTopic(false);
   };
 
-  const progress = hasWords
+  // ================= CALC =================
+  const progress = words.length
     ? Math.round((currentIndex / words.length) * 100)
     : 0;
 
-  const displayToday =
-    todayCount === 0 && selectedTopic ? words.length : todayCount;
+  const accuracy =
+    stats.easy + stats.again > 0
+      ? Math.round((stats.easy / (stats.easy + stats.again)) * 100)
+      : 0;
 
-  const rateColor =
-    memoryRate >= 80
-      ? "text-green-500"
-      : memoryRate >= 60
-        ? "text-yellow-500"
-        : "text-red-500";
-
-  const streakColor =
-    streak >= 7
-      ? "text-red-500"
-      : streak >= 3
-        ? "text-orange-500"
-        : "text-gray-400";
-
+  // ================= UI =================
   return (
-    <div className="p-6 min-h-screen space-y-6">
+    <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <h1 className="text-3xl font-bold">Ôn tập</h1>
 
-      {/* STATS */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>Hôm nay: {displayToday}</Card>
-        <Card className={rateColor}>Rate: {memoryRate}%</Card>
-        <Card className={streakColor}>🔥 {streak}</Card>
-      </div>
+      {/* ================= DASHBOARD ================= */}
+      {selectedTopic && !finished && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <p className="text-sm text-[var(--muted)]">Từ cần ôn hôm nay</p>
+            <h2 className="text-3xl font-bold">{dashboard.due}</h2>
+          </Card>
 
-      {/* TOPIC */}
-      {!isLearning && (
-        <div className="flex flex-wrap gap-2">
-          {topics.map((t) => (
-            <button
-              key={t.Id}
-              onClick={() => handleSelectTopic(t)}
-              className="px-3 py-2 border rounded"
-            >
-              {t.Name}
-            </button>
-          ))}
+          <Card>
+            <p className="text-sm text-[var(--muted)]">Tỉ lệ ghi nhớ</p>
+            <h2 className="text-3xl font-bold">{dashboard.rate}%</h2>
+          </Card>
+
+          <Card>
+            <p className="text-sm text-[var(--muted)]">Chuỗi ngày học</p>
+            <h2 className="text-3xl font-bold">{dashboard.streak} 🔥</h2>
+          </Card>
         </div>
       )}
 
-      {/* NOTICE */}
-      {notice && <Card>{notice}</Card>}
+      {/* ================= TOPICS ================= */}
+      {!selectedTopic && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+          {topics.map((t) => {
+            const percent = t.total
+              ? Math.round((t.learned / t.total) * 100)
+              : 0;
 
-      {/* LOADING */}
-      {loadingWords && <Card>Loading...</Card>}
+            return (
+              <motion.div
+                key={t.Id}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleSelectTopic(t)}
+                className="cursor-pointer p-6 rounded-2xl shadow-md"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <h2
+                  className="text-xl font-bold"
+                  style={{ color: "var(--primary)" }}
+                >
+                  {t.Name}
+                </h2>
 
-      {/* DONE */}
-      {isDone && (
-        <Card>
-          Done!
-          <button onClick={resetTopic}>Reset</button>
-        </Card>
+                <p className="text-sm text-[var(--muted)] mt-2">
+                  Đã học: {t.seen || 0}/{t.total}
+                </p>
+
+                <p className="text-sm text-[var(--muted)]">
+                  Đã nhớ: {t.learned}/{t.total}
+                </p>
+
+                <div className="mt-4 h-2 rounded-full bg-[var(--card2)]">
+                  <div
+                    className="h-2 rounded-full"
+                    style={{
+                      width: `${percent}%`,
+                      background: "var(--primary)",
+                    }}
+                  />
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+      {/* ================= EMPTY TOPIC (CHƯA HỌC) ================= */}
+      {selectedTopic && emptyTopic && (
+        <div className="flex justify-center">
+          <Card className="p-10 text-center space-y-6 max-w-md w-full shadow-xl">
+            <h2 className="text-3xl font-bold">📭 Chưa học chủ đề này</h2>
+
+            <p className="text-[var(--muted)]">
+              Bạn chưa có từ vựng nào trong chủ đề <b>{selectedTopic.Name}</b>
+            </p>
+
+            <button
+              onClick={resetReview}
+              className="px-6 py-3 rounded-xl text-white"
+              style={{ background: "var(--primary)" }}
+            >
+              ⬅ Quay lại chọn chủ đề
+            </button>
+          </Card>
+        </div>
+      )}
+      {/* ================= MAIN ================= */}
+      {currentWord && !finished && !emptyTopic && (
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-4">
+            <Card>
+              <div className="flex justify-between text-sm">
+                <span>
+                  {currentIndex}/{words.length}
+                </span>
+                <span>{progress}%</span>
+              </div>
+
+              <div className="h-2 mt-2 bg-[var(--card2)] rounded-full">
+                <div
+                  className="h-2 rounded-full bg-[var(--primary)]"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </Card>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentWord.Id}
+                initial={{ opacity: 0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -40 }}
+              >
+                <Card className="p-6 flex justify-between">
+                  <div>
+                    <h2 className="text-3xl font-bold">{currentWord.Word}</h2>
+                    <p className="text-[var(--muted)]">
+                      {currentWord.Pronunciation}
+                    </p>
+                  </div>
+
+                  {currentWord.Image && (
+                    <img
+                      src={currentWord.Image}
+                      className="w-28 h-28 rounded-xl object-cover"
+                    />
+                  )}
+                </Card>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* ================= ANSWERS WITH EFFECT ================= */}
+            <div className="grid grid-cols-2 gap-4">
+              {choices.map((c, i) => {
+                const isCorrect = c.Id === currentWord.Id;
+                const isSelected = selectedAnswer === c.Id;
+
+                let bg = "var(--card)";
+                let color = "var(--text)";
+
+                if (answerResult) {
+                  if (isCorrect) {
+                    bg = "var(--success)";
+                    color = "#fff";
+                  } else if (isSelected && answerResult === "again") {
+                    bg = "var(--danger)";
+                    color = "#fff";
+                  }
+                }
+
+                return (
+                  <motion.button
+                    key={c.Id}
+                    whileTap={{ scale: 0.95 }}
+                    className="p-5 border rounded-2xl text-left transition-all"
+                    onClick={() => handleSelectAnswer(c)}
+                    style={{
+                      borderColor: "var(--border)",
+                      background: bg,
+                      color,
+                    }}
+                  >
+                    <b>{i + 1}.</b> {c.Meaning}
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-center mt-6">
+              <button
+                onClick={handleSkip}
+                className="px-8 py-3 rounded-full border"
+                style={{
+                  background: "var(--card2)",
+                  borderColor: "var(--border)",
+                }}
+              >
+                ⏭ Skip
+              </button>
+            </div>
+          </div>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="text-xl font-bold">{selectedTopic?.Name}</h2>
+            <p>Đúng: {stats.easy}</p>
+            <p>Sai: {stats.again}</p>
+            <p>Bỏ qua: {stats.skip}</p>
+          </Card>
+        </div>
       )}
 
-      {/* WORD */}
-      {currentWord && !isDone && (
-        <div>
-          <Card>
-            {currentIndex + 1} / {words.length} ({progress}%)
+      {/* ================= FINISHED ================= */}
+      {finished && (
+        <div className="flex justify-center">
+          <Card className="p-10 text-center space-y-6 max-w-xl w-full shadow-xl">
+            <h2 className="text-4xl font-bold">Finished!</h2>
+
+            <p>
+              Độ chính xác:{" "}
+              <span
+                className="text-2xl font-bold"
+                style={{ color: "var(--primary)" }}
+              >
+                {accuracy}%
+              </span>
+            </p>
+
+            <div className="flex justify-around">
+              <div>
+                <p style={{ color: "var(--success)" }}>{stats.easy}</p>
+                <p>Đúng</p>
+              </div>
+
+              <div>
+                <p style={{ color: "var(--danger)" }}>{stats.again}</p>
+                <p>Sai</p>
+              </div>
+
+              <div>
+                <p style={{ color: "var(--muted)" }}>{stats.skip}</p>
+                <p>Bỏ qua</p>
+              </div>
+            </div>
+
+            <button
+              onClick={resetReview}
+              className="px-8 py-3 rounded-xl text-white"
+              style={{ background: "var(--primary)" }}
+            >
+              🔁 Học lại
+            </button>
           </Card>
-
-          <Card>
-            <h2>{currentWord.Word}</h2>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-2">
-            {choices.map((c) => {
-              const correct = c.Id === currentWord.Id;
-              const selected = selectedAnswer === c.Id;
-
-              return (
-                <button
-                  key={c.Id}
-                  onClick={() => handleSelectAnswer(c)}
-                  className={`border p-2 rounded ${
-                    selectedAnswer
-                      ? correct
-                        ? "bg-green-500 text-white"
-                        : selected
-                          ? "bg-red-500 text-white"
-                          : ""
-                      : ""
-                  }`}
-                >
-                  {c.Meaning}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => handleAnswer("again")}>Again</button>
-            <button onClick={() => handleAnswer("hard")}>Hard</button>
-            <button onClick={() => handleAnswer("easy")}>Easy</button>
-          </div>
         </div>
       )}
     </div>

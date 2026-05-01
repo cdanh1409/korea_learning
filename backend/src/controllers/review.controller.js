@@ -152,7 +152,47 @@ exports.getStreak = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+exports.getTopics = async (req, res) => {
+  try {
+    await poolConnect;
 
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const result = await pool.request().input("userId", sql.Int, userId).query(`
+        SELECT 
+        t.Id,
+        t.Name,
+
+        COUNT(DISTINCT v.Id) AS total,
+
+        -- đã từng học
+        ISNULL(SUM(CASE WHEN p.VocabularyId IS NOT NULL THEN 1 ELSE 0 END), 0) AS seen,
+
+        -- đã nhớ
+        ISNULL(SUM(CASE WHEN p.IsLearned = 1 THEN 1 ELSE 0 END), 0) AS learned,
+
+        -- cần ôn
+        ISNULL(SUM(CASE 
+          WHEN p.NextReview <= GETDATE() THEN 1 
+          ELSE 0 
+        END), 0) AS due
+
+      FROM Topics t
+      LEFT JOIN Vocabulary v ON v.TopicId = t.Id
+      LEFT JOIN UserVocabularyProgress p 
+        ON p.VocabularyId = v.Id AND p.UserId = @userId
+      GROUP BY t.Id, t.Name
+      `);
+
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("getTopics error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 // ================= UPDATE REVIEW =================
 exports.updateReview = async (req, res) => {
   try {
