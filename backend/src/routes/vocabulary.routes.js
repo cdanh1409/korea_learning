@@ -2,11 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const controller = require("../controllers/vocabulary.controller");
+const verifyToken = require("../../middleware/authMiddleware");
 
-// GET SRS vocab
-router.get("/", controller.getAllVocabulary);
-
-// UPDATE SRS
-router.post("/review", controller.updateReview);
+router.get("/", verifyToken, controller.getAllVocabulary);
+router.post("/review", verifyToken, controller.updateReview);
 
 module.exports = router;

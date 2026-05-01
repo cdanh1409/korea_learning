@@ -2,14 +2,15 @@ const express = require("express");
 const router = express.Router();
 
 const reviewController = require("../controllers/review.controller");
+const verifyToken = require("../../middleware/authMiddleware");
 
-// SPECIFIC ROUTES trước
-router.get("/today", reviewController.getTodayReview);
-router.get("/stats", reviewController.getStats);
-router.get("/streak", reviewController.getStreak);
+// ================= PROTECTED ROUTES =================
+router.get("/today", verifyToken, reviewController.getTodayReview);
+router.get("/stats", verifyToken, reviewController.getStats);
+router.get("/streak", verifyToken, reviewController.getStreak);
 
-// GENERAL ROUTES sau
-router.get("/", reviewController.getReviewWords);
-router.post("/:id", reviewController.updateReview);
+// ================= PROTECTED GENERAL =================
+router.get("/", verifyToken, reviewController.getReviewWords);
+router.post("/", verifyToken, reviewController.updateReview);
 
 module.exports = router;

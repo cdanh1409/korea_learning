@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Card from "../components/common/Card";
 import useTheme from "../hooks/useTheme";
+import api from "../utils/api";
 
 const defaultSettings = {
   dailyNew: 20,
@@ -27,17 +28,33 @@ export default function Settings() {
     return cached ? JSON.parse(cached) : defaultSettings;
   });
 
+  // ================= LOAD SETTINGS =================
   useEffect(() => {
-    fetch("http://localhost:5000/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        const merged = { ...settings, ...data };
+    let ignore = false;
+
+    const load = async () => {
+      try {
+        const res = await api.get("/settings");
+
+        if (ignore) return;
+
+        const merged = { ...settings, ...res.data };
         setSettings(merged);
         localStorage.setItem("settings", JSON.stringify(merged));
-      })
-      .catch(() => setMsg("❌ Không tải được settings"));
+      } catch (err) {
+        console.error(err);
+        setMsg("❌ Không tải được settings");
+      }
+    };
+
+    load();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
+  // ================= UPDATE LOCAL =================
   const update = (key, value) => {
     setSettings((prev) => {
       const updated = { ...prev, [key]: value };
@@ -46,25 +63,28 @@ export default function Settings() {
     });
   };
 
+  // ================= SAVE =================
   const handleSave = async () => {
     setSaving(true);
     setMsg("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-
-      if (!res.ok) throw new Error();
+      await api.post("/settings", settings);
       setMsg("✅ Saved successfully");
-    } catch {
+    } catch (err) {
+      console.error(err);
       setMsg("❌ Save failed");
     } finally {
       setSaving(false);
     }
   };
+
+  const tabs = [
+    { key: "learning", label: "🧠 Learning" },
+    { key: "review", label: "🔁 Review" },
+    { key: "ui", label: "🎨 UI" },
+    { key: "notification", label: "🔔 Notify" },
+  ];
 
   return (
     <div
@@ -76,11 +96,16 @@ export default function Settings() {
     >
       {/* HEADER */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">⚙️ Settings</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+          <p style={{ color: "var(--muted)" }} className="text-sm">
+            Tùy chỉnh trải nghiệm học của bạn
+          </p>
+        </div>
 
         <button
           onClick={toggleTheme}
-          className="px-4 py-2 rounded-xl text-sm font-medium transition"
+          className="px-4 py-2 rounded-xl text-sm font-medium transition hover:scale-105"
           style={{
             background: "var(--card)",
             border: "1px solid var(--border)",
@@ -90,50 +115,43 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* SEGMENTED TAB (xịn hơn button thường) */}
-      <div
-        className="flex p-1 rounded-2xl w-fit"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        {["learning", "review", "ui", "notification"].map((t) => (
+      {/* TAB */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition"
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:scale-105"
             style={{
-              background: tab === t ? "var(--primary)" : "transparent",
-              color: tab === t ? "white" : "var(--muted)",
-              transform: tab === t ? "scale(1.02)" : "scale(1)",
+              background: tab === t.key ? "var(--primary)" : "var(--card)",
+              color: tab === t.key ? "white" : "var(--text)",
+              border: "1px solid var(--border)",
             }}
           >
-            {t}
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* MESSAGE (toast style nhẹ hơn) */}
+      {/* MESSAGE */}
       {msg && (
         <div
           className="px-4 py-3 rounded-xl text-sm"
           style={{
             background: "var(--card)",
             border: "1px solid var(--border)",
+            color: "var(--text)",
           }}
         >
           {msg}
         </div>
       )}
 
-      {/* GRID LAYOUT (look pro hơn stacked UI) */}
+      {/* ================= CONTENT ================= */}
       <div className="grid gap-6">
-        {/* ================= LEARNING ================= */}
         {tab === "learning" && (
           <Card>
             <SectionTitle title="🧠 Learning Preferences" />
-
             <Grid>
               <Input
                 label="Daily new words"
@@ -156,11 +174,9 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* ================= REVIEW ================= */}
         {tab === "review" && (
           <Card>
             <SectionTitle title="🔁 Spaced Repetition" />
-
             <Grid>
               <Input
                 label="Daily reviews"
@@ -183,11 +199,9 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* ================= UI ================= */}
         {tab === "ui" && (
           <Card>
             <SectionTitle title="🎨 Interface" />
-
             <Grid>
               <Toggle
                 label="Dark mode"
@@ -204,11 +218,9 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* ================= NOTIFICATION ================= */}
         {tab === "notification" && (
           <Card>
             <SectionTitle title="🔔 Notifications" />
-
             <Grid>
               <Input
                 label="Reminder hour"
@@ -220,16 +232,15 @@ export default function Settings() {
         )}
       </div>
 
-      {/* SAVE BUTTON (sticky pro style feel) */}
+      {/* SAVE */}
       <button
         onClick={handleSave}
         disabled={saving}
-        className="w-full py-3 rounded-2xl font-semibold transition"
+        className="w-full py-3 rounded-2xl font-semibold transition-all duration-200 hover:scale-[1.02]"
         style={{
           background: "var(--primary)",
           color: "white",
           opacity: saving ? 0.6 : 1,
-          boxShadow: "0 10px 30px rgba(99,102,241,0.25)",
         }}
       >
         {saving ? "Saving..." : "Save changes"}
@@ -241,23 +252,25 @@ export default function Settings() {
 /* ================= UI COMPONENTS ================= */
 
 function SectionTitle({ title }) {
-  return <h2 className="text-base font-semibold mb-4 opacity-90">{title}</h2>;
+  return <h2 className="text-lg font-semibold mb-4 tracking-tight">{title}</h2>;
 }
 
 function Grid({ children }) {
-  return <div className="space-y-4">{children}</div>;
+  return <div className="space-y-5">{children}</div>;
 }
 
 function Input({ label, value, onChange }) {
   return (
-    <div>
-      <label className="text-xs opacity-60">{label}</label>
+    <div className="space-y-1">
+      <label className="text-xs" style={{ color: "var(--muted)" }}>
+        {label}
+      </label>
 
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full mt-1 px-3 py-2 rounded-xl outline-none transition"
+        className="w-full px-3 py-2 rounded-xl outline-none transition"
         style={{
           background: "var(--card2)",
           border: "1px solid var(--border)",
@@ -270,18 +283,18 @@ function Input({ label, value, onChange }) {
 
 function Toggle({ label, value, onChange }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between py-1">
       <span className="text-sm">{label}</span>
 
       <button
         onClick={() => onChange(!value)}
-        className="w-12 h-6 rounded-full p-1 transition flex items-center"
+        className="w-12 h-6 rounded-full p-1 flex items-center transition"
         style={{
           background: value ? "var(--primary)" : "var(--card2)",
         }}
       >
         <div
-          className="w-4 h-4 bg-white rounded-full transition"
+          className="w-4 h-4 bg-white rounded-full transition-all duration-200"
           style={{
             transform: value ? "translateX(24px)" : "translateX(0px)",
           }}

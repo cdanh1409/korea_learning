@@ -1,70 +1,104 @@
-const { pool, poolConnect } = require("../config/db");
+const { pool, poolConnect, sql } = require("../config/db");
 
 // ================= GET WORDS BY TOPIC =================
 exports.getReviewWords = async (req, res) => {
   try {
     await poolConnect;
 
-    const topicId = req.query.topicId;
+    const topicId = Number(req.query.topicId);
+    const userId = req.user?.id;
 
-    if (!topicId) {
-      return res.status(400).json({ message: "Missing topicId" });
+    if (!topicId || !userId) {
+      return res.status(400).json({ message: "Missing data" });
     }
 
-    const result = await pool.request().input("topicId", topicId).query(`
-      SELECT 
-        Id,
-        Word,
-        Meaning,
-        Pronunciation,
-        AudioUrl,
-        Level,
-        TopicId,
-        nextReview
-      FROM Vocabulary
-      WHERE TopicId = @topicId
-      ORDER BY nextReview ASC
-    `);
+    const result = await pool
+      .request()
+      .input("topicId", sql.Int, topicId)
+      .input("userId", sql.Int, userId).query(`
+        SELECT v.*, p.*
+        FROM Vocabulary v
+        JOIN UserVocabularyProgress p 
+          ON p.VocabularyId = v.Id AND p.UserId = @userId
+        WHERE v.TopicId = @topicId
+        ORDER BY ISNULL(p.NextReview, GETDATE()) ASC
+      `);
 
-    res.json(result.recordset);
+    res.json(result.recordset || []);
   } catch (err) {
     console.error("getReviewWords error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ================= GET TODAY REVIEW =================
+// ================= TODAY REVIEW =================
 exports.getTodayReview = async (req, res) => {
   try {
     await poolConnect;
 
-    const result = await pool.request().query(`
-      SELECT *
-      FROM Vocabulary
-      WHERE nextReview <= GETDATE()
-    `);
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    res.json(result.recordset);
+    const result = await pool.request().input("userId", sql.Int, userId).query(`
+        SELECT v.*, p.*
+        FROM UserVocabularyProgress p
+        JOIN Vocabulary v ON v.Id = p.VocabularyId
+        WHERE p.UserId = @userId
+          AND p.NextReview IS NOT NULL
+          AND p.NextReview <= GETDATE()
+        ORDER BY p.NextReview ASC
+      `);
+
+    res.json(result.recordset || []);
   } catch (err) {
     console.error("getTodayReview error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ================= GET MEMORY STATS =================
+// ================= NEW WORDS =================
+exports.getNewWords = async (req, res) => {
+  try {
+    await poolConnect;
+
+    const userId = req.user?.id;
+
+    const result = await pool.request().input("userId", sql.Int, userId).query(`
+        SELECT TOP 20 v.*
+        FROM Vocabulary v
+        WHERE NOT EXISTS (
+          SELECT 1 
+          FROM UserVocabularyProgress p
+          WHERE p.VocabularyId = v.Id
+            AND p.UserId = @userId
+        )
+        ORDER BY v.Id DESC
+      `);
+
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("getNewWords error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ================= STATS =================
 exports.getStats = async (req, res) => {
   try {
     await poolConnect;
 
-    const result = await pool.request().query(`
-      SELECT 
-        SUM(correctCount) AS totalCorrect,
-        SUM(wrongCount) AS totalWrong
-      FROM Vocabulary
-    `);
+    const userId = req.user?.id;
 
-    const correct = result.recordset[0].totalCorrect || 0;
-    const wrong = result.recordset[0].totalWrong || 0;
+    const result = await pool.request().input("userId", sql.Int, userId).query(`
+        SELECT 
+          SUM(CorrectCount) AS totalCorrect,
+          SUM(WrongCount) AS totalWrong
+        FROM UserVocabularyProgress
+        WHERE UserId = @userId
+      `);
+
+    const correct = result.recordset[0]?.totalCorrect || 0;
+    const wrong = result.recordset[0]?.totalWrong || 0;
 
     const rate =
       correct + wrong === 0
@@ -78,41 +112,43 @@ exports.getStats = async (req, res) => {
   }
 };
 
-// ================= GET STREAK =================
+// ================= STREAK =================
 exports.getStreak = async (req, res) => {
   try {
     await poolConnect;
 
-    const result = await pool.request().query(`
-      SELECT DISTINCT CAST(LastReviewed AS DATE) AS reviewDate
-      FROM UserVocabularyProgress
-      WHERE UserId = 1
-      ORDER BY reviewDate DESC
-    `);
+    const userId = req.user?.id;
+
+    const result = await pool.request().input("userId", sql.Int, userId).query(`
+        SELECT DISTINCT CAST(LastReviewed AS DATE) AS reviewDate
+        FROM UserVocabularyProgress
+        WHERE UserId = @userId
+        ORDER BY reviewDate DESC
+      `);
 
     const dates = result.recordset.map(
-      (r) => r.reviewDate.toISOString().split("T")[0],
+      (r) => new Date(r.reviewDate).toISOString().split("T")[0],
     );
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     let streak = 0;
 
     for (let i = 0; i < dates.length; i++) {
       const d = new Date(dates[i]);
-      const t = new Date(today);
+      d.setHours(0, 0, 0, 0);
 
-      const diff = Math.floor((t - d) / (1000 * 60 * 60 * 24));
+      const diff = Math.floor((today - d) / (1000 * 60 * 60 * 24));
 
       if (i === 0 && diff > 1) break;
-
       if (diff === i) streak++;
       else break;
     }
 
     res.json({ streak });
   } catch (err) {
-    console.error(err);
+    console.error("getStreak error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -122,83 +158,151 @@ exports.updateReview = async (req, res) => {
   try {
     await poolConnect;
 
-    const { id } = req.params;
-    const { type } = req.body;
+    const userId = req.user?.id || req.user?.userId;
+    const vocabId = parseInt(req.body.id, 10);
+    const type = req.body.level;
 
-    // ===== GET CURRENT LEVEL =====
-    const current = await pool.request().input("id", id).query(`
-      SELECT Level FROM Vocabulary WHERE Id = @id
-    `);
-
-    if (!current.recordset.length) {
-      return res.status(404).json({ message: "Word not found" });
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    let level = current.recordset[0].Level || 1;
-    let nextReview = new Date();
-
-    let correctInc = 0;
-    let wrongInc = 0;
-
-    // ===== SRS LOGIC =====
-    if (type === "again") {
-      level = Math.max(1, level - 1);
-      nextReview.setMinutes(nextReview.getMinutes() + 10);
-      wrongInc = 1;
-    } else if (type === "good") {
-      level += 1;
-
-      const intervals = [1, 3, 7, 14, 30];
-      const days = intervals[Math.min(level - 1, intervals.length - 1)];
-
-      nextReview.setDate(nextReview.getDate() + days);
-      correctInc = 1;
-    } else if (type === "skip") {
-      nextReview.setMinutes(nextReview.getMinutes() + 5);
+    if (!Number.isInteger(vocabId) || !type) {
+      return res.status(400).json({
+        message: "Missing data",
+        debug: { userId, vocabId, type },
+      });
     }
 
-    // ===== UPDATE VOCABULARY =====
-    await pool
+    // ================= GET PROGRESS =================
+    const progressRes = await pool
       .request()
-      .input("id", id)
-      .input("level", level)
-      .input("nextReview", nextReview)
-      .input("correctInc", correctInc)
-      .input("wrongInc", wrongInc).query(`
-        UPDATE Vocabulary
-        SET 
-          Level = @level,
-          nextReview = @nextReview,
-          correctCount = ISNULL(correctCount,0) + @correctInc,
-          wrongCount = ISNULL(wrongCount,0) + @wrongInc
-        WHERE Id = @id
+      .input("userId", sql.Int, userId)
+      .input("id", sql.Int, vocabId).query(`
+        SELECT *
+        FROM UserVocabularyProgress
+        WHERE UserId = @userId AND VocabularyId = @id
       `);
 
-    // ===== UPDATE USER PROGRESS (STREAK) =====
-    await pool.request().input("id", id).query(`
-      IF EXISTS (
-        SELECT 1 FROM UserVocabularyProgress 
-        WHERE VocabularyId = @id AND UserId = 1
-      )
-      BEGIN
-        UPDATE UserVocabularyProgress
-        SET 
-          LastReviewed = GETDATE(),
-          CorrectCount = ISNULL(CorrectCount,0) + ${correctInc},
-          WrongCount = ISNULL(WrongCount,0) + ${wrongInc}
-        WHERE VocabularyId = @id AND UserId = 1
-      END
-      ELSE
-      BEGIN
-        INSERT INTO UserVocabularyProgress
-        (UserId, VocabularyId, CorrectCount, WrongCount, LastReviewed, CreatedAt)
-        VALUES (1, @id, ${correctInc}, ${wrongInc}, GETDATE(), GETDATE())
-      END
-    `);
+    let row = progressRes.recordset[0];
 
-    res.json({ success: true });
+    // ================= DEFAULT VALUES =================
+    let repetition = row?.Repetition ?? 0;
+    let interval = row?.IntervalDays ?? 0;
+    let easeFactor = row?.EaseFactor ?? 2.5;
+    let nextReview = new Date();
+    let correctInc = 0;
+    let wrongInc = 0;
+    let isLearned = row?.IsLearned ?? 0;
+
+    // ================= LOGIC =================
+    switch (type) {
+      case "again":
+        repetition = 0;
+        interval = 1;
+        easeFactor = Math.max(1.3, easeFactor - 0.2);
+        wrongInc = 1;
+        break;
+
+      case "hard":
+        repetition += 1;
+        interval = Math.max(1, Math.floor(interval * 1.2));
+        easeFactor = Math.max(1.3, easeFactor - 0.1);
+        correctInc = 1;
+        break;
+
+      case "easy":
+        repetition += 1;
+        easeFactor = easeFactor + 0.1;
+        interval = interval === 0 ? 1 : Math.floor(interval * easeFactor);
+        correctInc = 1;
+        break;
+
+      case "skip":
+        interval = 1;
+        break;
+
+      default:
+        return res.status(400).json({ message: "Invalid type" });
+    }
+
+    // ================= NEXT REVIEW DATE =================
+    nextReview.setDate(nextReview.getDate() + interval);
+
+    // mark learned nếu repetition đủ cao
+    if (repetition >= 5) isLearned = 1;
+
+    // ================= UPSERT =================
+    await pool
+      .request()
+      .input("userId", sql.Int, userId)
+      .input("id", sql.Int, vocabId)
+      .input("repetition", sql.Int, repetition)
+      .input("intervalDays", sql.Int, interval)
+      .input("easeFactor", sql.Float, easeFactor)
+      .input("nextReview", sql.DateTime, nextReview)
+      .input("correctInc", sql.Int, correctInc)
+      .input("wrongInc", sql.Int, wrongInc)
+      .input("isLearned", sql.Bit, isLearned).query(`
+        IF EXISTS (
+          SELECT 1
+          FROM UserVocabularyProgress
+          WHERE UserId = @userId AND VocabularyId = @id
+        )
+        BEGIN
+          UPDATE UserVocabularyProgress
+          SET
+            LastReviewed = GETDATE(),
+            NextReview = @nextReview,
+            Repetition = @repetition,
+            IntervalDays = @intervalDays,
+            EaseFactor = @easeFactor,
+            CorrectCount = CorrectCount + @correctInc,
+            WrongCount = WrongCount + @wrongInc,
+            IsLearned = @isLearned,
+            IsActive = 1
+          WHERE UserId = @userId AND VocabularyId = @id
+        END
+        ELSE
+        BEGIN
+          INSERT INTO UserVocabularyProgress
+          (
+            UserId,
+            VocabularyId,
+            CorrectCount,
+            WrongCount,
+            Repetition,
+            IntervalDays,
+            EaseFactor,
+            LastReviewed,
+            NextReview,
+            CreatedAt,
+            IsLearned,
+            IsActive
+          )
+          VALUES
+          (
+            @userId,
+            @id,
+            @correctInc,
+            @wrongInc,
+            @repetition,
+            @intervalDays,
+            @easeFactor,
+            GETDATE(),
+            @nextReview,
+            GETDATE(),
+            @isLearned,
+            1
+          )
+        END
+      `);
+
+    return res.json({ success: true });
   } catch (err) {
     console.error("updateReview error:", err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "Server error",
+      detail: err.message,
+    });
   }
 };

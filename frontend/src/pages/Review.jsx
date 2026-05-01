@@ -1,5 +1,16 @@
 import { useEffect, useState, useMemo } from "react";
 import Card from "../components/common/Card";
+import api from "../utils/api";
+
+// ================= SHUFFLE =================
+const shuffleArray = (arr = []) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 export default function Review() {
   const [topics, setTopics] = useState([]);
@@ -12,84 +23,139 @@ export default function Review() {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [loadingWords, setLoadingWords] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notice, setNotice] = useState(null);
 
-  const currentWord = words[currentIndex];
-  const isDone = currentIndex >= words.length;
+  const currentWord = words?.[currentIndex] || null;
 
-  // ================= LOAD =================
+  const hasWords = Array.isArray(words) && words.length > 0;
+
+  const isDone =
+    selectedTopic &&
+    Array.isArray(words) &&
+    words.length > 0 &&
+    currentIndex >= words.length;
+
+  const isLearning = selectedTopic && hasWords && !isDone;
+
+  // ================= LOAD INIT =================
   useEffect(() => {
-    fetch("http://localhost:5000/api/topics")
-      .then((res) => res.json())
-      .then(setTopics);
+    let ignore = false;
 
-    fetch("http://localhost:5000/api/review/today")
-      .then((res) => res.json())
-      .then((data) => setTodayCount(data.length));
+    const load = async () => {
+      try {
+        const [topicsRes, todayRes, statsRes, streakRes] = await Promise.all([
+          api.get("/topics"),
+          api.get("/review/today"),
+          api.get("/review/stats"),
+          api.get("/review/streak"),
+        ]);
 
-    fetch("http://localhost:5000/api/review/stats")
-      .then((res) => res.json())
-      .then((data) => setMemoryRate(data.rate || 0));
+        if (ignore) return;
 
-    fetch("http://localhost:5000/api/review/streak")
-      .then((res) => res.json())
-      .then((data) => setStreak(data.streak || 0));
+        setTopics(topicsRes.data || []);
+        setTodayCount(todayRes.data?.length || 0);
+        setMemoryRate(statsRes.data?.rate || 0);
+        setStreak(streakRes.data?.streak || 0);
+      } catch (err) {
+        console.error("LOAD ERROR:", err);
+      }
+    };
+
+    load();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
-  // ================= QUIZ =================
+  // ================= CHOICES =================
   const choices = useMemo(() => {
-    if (!currentWord || words.length === 0) return [];
+    if (!currentWord || !Array.isArray(words)) return [];
 
-    const pool = words.filter((w) => w.Id !== currentWord.Id);
-    const fake = pool.slice(0, 3);
+    const sameTopic = words.filter((w) => w.TopicId === currentWord.TopicId);
+    const pool = sameTopic.filter((w) => w.Id !== currentWord.Id);
+    const fake = shuffleArray(pool).slice(0, 3);
 
-    return [...fake, currentWord].sort((a, b) => a.Id - b.Id);
+    return shuffleArray([...fake, currentWord]);
   }, [currentWord, words]);
 
-  // ================= TOPIC =================
-  const handleSelectTopic = (topic) => {
+  // ================= SELECT TOPIC =================
+  const handleSelectTopic = async (topic) => {
+    setNotice(null);
     setSelectedTopic(topic);
     setCurrentIndex(0);
     setSelectedAnswer(null);
+    setLoadingWords(true);
+    setWords([]);
 
-    fetch(`http://localhost:5000/api/review?topicId=${topic.Id}`)
-      .then((res) => res.json())
-      .then(setWords);
+    try {
+      const res = await api.get(`/review?topicId=${topic.Id}`);
+
+      if (!Array.isArray(res.data) || res.data.length === 0) {
+        setNotice("Chủ đề chưa có từ để học");
+        setSelectedTopic(null);
+        setLoadingWords(false);
+        return;
+      }
+
+      setWords(shuffleArray(res.data));
+    } catch (err) {
+      console.error(err);
+    }
+
+    setLoadingWords(false);
   };
 
-  const nextWord = () => {
-    setSelectedAnswer(null);
-    setCurrentIndex((p) => p + 1);
-  };
+  // ================= ANSWER =================
+  const handleAnswer = async (level) => {
+    if (!currentWord || isSubmitting) return;
 
-  const handleAnswer = async (type) => {
-    if (!currentWord) return;
+    setIsSubmitting(true);
 
-    await fetch(`http://localhost:5000/api/review/${currentWord.Id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type }),
-    });
+    try {
+      await api.post("/review", {
+        id: currentWord.Id,
+        level,
+      });
 
-    nextWord();
+      setCurrentIndex((prev) => prev + 1);
+      setSelectedAnswer(null);
+    } catch (err) {
+      console.error(err);
+    }
+
+    setIsSubmitting(false);
   };
 
   const handleSelectAnswer = (choice) => {
-    if (selectedAnswer) return;
+    if (selectedAnswer || isSubmitting) return;
 
     setSelectedAnswer(choice.Id);
 
     setTimeout(() => {
-      handleAnswer(choice.Id === currentWord.Id ? "good" : "again");
-    }, 400);
+      handleAnswer(choice.Id === currentWord.Id ? "easy" : "again");
+    }, 200);
   };
 
-  const progress = words.length
-    ? Math.round(((currentIndex + 1) / words.length) * 100)
+  const resetTopic = () => {
+    setSelectedTopic(null);
+    setWords([]);
+    setCurrentIndex(0);
+    setSelectedAnswer(null);
+    setNotice(null);
+  };
+
+  const progress = hasWords
+    ? Math.round((currentIndex / words.length) * 100)
     : 0;
+
+  const displayToday =
+    todayCount === 0 && selectedTopic ? words.length : todayCount;
 
   const rateColor =
     memoryRate >= 80
-      ? "text-[var(--primary)]"
+      ? "text-green-500"
       : memoryRate >= 60
         ? "text-yellow-500"
         : "text-red-500";
@@ -99,173 +165,88 @@ export default function Review() {
       ? "text-red-500"
       : streak >= 3
         ? "text-orange-500"
-        : "text-[var(--muted)]";
+        : "text-gray-400";
 
   return (
-    <div
-      className="p-6 min-h-screen space-y-6"
-      style={{
-        background: "var(--bg)",
-        color: "var(--text)",
-      }}
-    >
-      {/* ================= HEADER ================= */}
-      <div>
-        <h1 className="text-3xl font-bold">🔁 Ôn tập</h1>
-        <p style={{ color: "var(--muted)" }}>Lặp lại để ghi nhớ lâu hơn</p>
+    <div className="p-6 min-h-screen space-y-6">
+      <h1 className="text-3xl font-bold">Ôn tập</h1>
+
+      {/* STATS */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>Hôm nay: {displayToday}</Card>
+        <Card className={rateColor}>Rate: {memoryRate}%</Card>
+        <Card className={streakColor}>🔥 {streak}</Card>
       </div>
 
-      {/* ================= STATS ================= */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* TOPIC */}
+      {!isLearning && (
+        <div className="flex flex-wrap gap-2">
+          {topics.map((t) => (
+            <button
+              key={t.Id}
+              onClick={() => handleSelectTopic(t)}
+              className="px-3 py-2 border rounded"
+            >
+              {t.Name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* NOTICE */}
+      {notice && <Card>{notice}</Card>}
+
+      {/* LOADING */}
+      {loadingWords && <Card>Loading...</Card>}
+
+      {/* DONE */}
+      {isDone && (
         <Card>
-          <p style={{ color: "var(--muted)" }}>Hôm nay</p>
-          <h2 className="text-2xl font-bold">{todayCount}</h2>
-        </Card>
-
-        <Card>
-          <p style={{ color: "var(--muted)" }}>Tỉ lệ ghi nhớ</p>
-          <h2 className={`text-2xl font-bold ${rateColor}`}>{memoryRate}%</h2>
-        </Card>
-
-        <Card>
-          <p style={{ color: "var(--muted)" }}>Chuỗi</p>
-          <h2 className={`text-2xl font-bold ${streakColor}`}>🔥 {streak}</h2>
-        </Card>
-      </div>
-
-      {/* ================= TOPICS ================= */}
-      <div className="flex flex-wrap gap-2">
-        {topics.map((t) => (
-          <button
-            key={t.Id}
-            onClick={() => handleSelectTopic(t)}
-            className="px-4 py-2 rounded-xl border transition"
-            style={{
-              background:
-                selectedTopic?.Id === t.Id ? "var(--primary)" : "var(--card)",
-              color: selectedTopic?.Id === t.Id ? "#fff" : "var(--text)",
-              borderColor: "var(--border)",
-            }}
-          >
-            {t.Name} ({t.WordCount})
-          </button>
-        ))}
-      </div>
-
-      {/* ================= DONE ================= */}
-      {selectedTopic && isDone && (
-        <Card>
-          <h2 className="text-xl font-bold">
-            🎉 Hoàn thành {selectedTopic.Name}
-          </h2>
-
-          <button
-            onClick={() => {
-              setSelectedTopic(null);
-              setWords([]);
-              setCurrentIndex(0);
-            }}
-            className="mt-4 px-4 py-2 rounded-xl text-white"
-            style={{ background: "var(--primary)" }}
-          >
-            Chọn chủ đề khác
-          </button>
+          Done!
+          <button onClick={resetTopic}>Reset</button>
         </Card>
       )}
 
-      {/* ================= MAIN ================= */}
+      {/* WORD */}
       {currentWord && !isDone && (
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* LEFT */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* PROGRESS */}
-            <Card>
-              <div className="flex justify-between text-sm mb-2">
-                <span>
-                  {currentIndex + 1}/{words.length}
-                </span>
-                <span>{progress}%</span>
-              </div>
+        <div>
+          <Card>
+            {currentIndex + 1} / {words.length} ({progress}%)
+          </Card>
 
-              <div
-                className="h-2 rounded-full"
-                style={{ background: "var(--card2)" }}
-              >
-                <div
-                  className="h-2 rounded-full"
-                  style={{
-                    width: `${progress}%`,
-                    background: "var(--primary)",
-                  }}
-                />
-              </div>
-            </Card>
+          <Card>
+            <h2>{currentWord.Word}</h2>
+          </Card>
 
-            {/* WORD CARD */}
-            <Card className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-bold">{currentWord.Word}</h2>
-                <p style={{ color: "var(--muted)" }}>
-                  {currentWord.Pronunciation}
-                </p>
-              </div>
+          <div className="grid grid-cols-2 gap-2">
+            {choices.map((c) => {
+              const correct = c.Id === currentWord.Id;
+              const selected = selectedAnswer === c.Id;
 
-              <div className="w-28 h-28 rounded-xl overflow-hidden bg-[var(--card2)] flex items-center justify-center">
-                {currentWord.Image ? (
-                  <img
-                    src={`http://localhost:5000${currentWord.Image}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span style={{ color: "var(--muted)" }}>IMG</span>
-                )}
-              </div>
-            </Card>
-
-            {/* QUIZ */}
-            <div className="grid grid-cols-2 gap-3">
-              {choices.map((c, i) => {
-                const isCorrect = c.Id === currentWord.Id;
-                const isSelected = selectedAnswer === c.Id;
-
-                let style = {
-                  background: "var(--card)",
-                  borderColor: "var(--border)",
-                };
-
-                if (selectedAnswer) {
-                  if (isCorrect) style.background = "#22c55e";
-                  else if (isSelected) style.background = "#ef4444";
-                }
-
-                return (
-                  <button
-                    key={c.Id}
-                    onClick={() => handleSelectAnswer(c)}
-                    disabled={selectedAnswer !== null}
-                    className="p-4 rounded-xl border text-left transition"
-                    style={style}
-                  >
-                    <b>{i + 1}.</b> {c.Meaning}
-                  </button>
-                );
-              })}
-            </div>
+              return (
+                <button
+                  key={c.Id}
+                  onClick={() => handleSelectAnswer(c)}
+                  className={`border p-2 rounded ${
+                    selectedAnswer
+                      ? correct
+                        ? "bg-green-500 text-white"
+                        : selected
+                          ? "bg-red-500 text-white"
+                          : ""
+                      : ""
+                  }`}
+                >
+                  {c.Meaning}
+                </button>
+              );
+            })}
           </div>
 
-          {/* RIGHT */}
-          <div className="space-y-3">
-            <Card>
-              <button onClick={() => handleAnswer("skip")}>⏭ Bỏ qua</button>
-            </Card>
-
-            <Card>
-              <button onClick={() => handleAnswer("again")}>❌ Chưa nhớ</button>
-            </Card>
-
-            <Card>
-              <button onClick={() => handleAnswer("good")}>✅ Đã nhớ</button>
-            </Card>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => handleAnswer("again")}>Again</button>
+            <button onClick={() => handleAnswer("hard")}>Hard</button>
+            <button onClick={() => handleAnswer("easy")}>Easy</button>
           </div>
         </div>
       )}

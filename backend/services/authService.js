@@ -2,11 +2,15 @@ const { pool, poolConnect } = require("../src/config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const SECRET_KEY = "secret_key";
+// ❌ XÓA CÁI NÀY
+// const SECRET_KEY = "secret_key";
+
+// ✅ DÙNG ENV
+const SECRET_KEY = process.env.JWT_SECRET;
 
 // REGISTER
 exports.register = async ({ email, password }) => {
-  const db = await poolConnect;
+  await poolConnect;
 
   const check = await pool
     .request()
@@ -29,7 +33,7 @@ exports.register = async ({ email, password }) => {
 
 // LOGIN
 exports.login = async ({ email, password }) => {
-  const db = await poolConnect;
+  await poolConnect;
 
   const result = await pool
     .request()
@@ -44,9 +48,17 @@ exports.login = async ({ email, password }) => {
 
   if (!isMatch) throw new Error("Wrong password");
 
-  const token = jwt.sign({ id: user.Id, email: user.Email }, SECRET_KEY, {
-    expiresIn: "1d",
-  });
+  // 🔥 FIX HERE
+  const token = jwt.sign(
+    {
+      id: user.Id,
+      email: user.Email,
+    },
+    SECRET_KEY, // MUST MATCH middleware
+    {
+      expiresIn: "1d",
+    },
+  );
 
   return {
     token,

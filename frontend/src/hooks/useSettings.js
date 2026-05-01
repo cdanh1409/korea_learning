@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import api from "../utils/api";
 
 export default function useSettings() {
   const [settings, setSettings] = useState({
@@ -11,16 +12,30 @@ export default function useSettings() {
 
   // load từ API
   useEffect(() => {
-    fetch("http://localhost:5000/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
+    let ignore = false;
+
+    const load = async () => {
+      try {
+        const res = await api.get("/settings");
+
+        if (ignore) return;
+
         setSettings((prev) => ({
           ...prev,
-          ...data,
+          ...res.data,
         }));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      } catch (err) {
+        console.error("load settings error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   // apply dark mode global

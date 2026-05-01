@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { login } from "../services/authService";
-import { setToken, setUser } from "../utils/auth";
 import { useNavigate, Link } from "react-router-dom";
+import api from "../utils/api";
+import { setToken, setUser } from "../utils/auth";
 
 export default function Login() {
   const [form, setForm] = useState({
@@ -12,112 +12,80 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // ======================
-  // INPUT CHANGE
-  // ======================
   const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    console.log("✏️ INPUT:", name, value);
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
+    setForm((p) => ({
+      ...p,
+      [e.target.name]: e.target.value,
     }));
   };
 
-  // ======================
-  // SUBMIT LOGIN
-  // ======================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    console.log("🚀 LOGIN SUBMIT:", form);
-
     if (!form.email || !form.password) {
-      alert("Please fill all fields");
+      alert("Vui lòng nhập đầy đủ thông tin");
       return;
     }
 
     try {
       setLoading(true);
 
-      console.log("📤 CALL API LOGIN...");
+      // ================= AXIOS CALL =================
+      const res = await api.post("/auth/login", form);
+      const data = res.data;
 
-      const res = await login(form);
+      const token = data?.token;
+      const user = data?.user;
 
-      console.log("📥 RESPONSE:", res);
-
-      if (!res.token) {
-        console.log("❌ LOGIN FAILED:", res);
-        alert(res.error || "Login failed");
+      if (!token) {
+        alert(data?.message || "Login failed");
         return;
       }
 
-      // ======================
-      // SUCCESS
-      // ======================
-      console.log("✅ LOGIN SUCCESS");
-      console.log("🔑 TOKEN:", res.token);
-
-      setToken(res.token);
-      setUser(res.user); // 👈 QUAN TRỌNG
-
-      console.log("💾 TOKEN + USER SAVED");
+      setToken(token);
+      setUser(user);
 
       navigate("/");
-      console.log("➡️ GO TO DASHBOARD");
     } catch (err) {
-      console.log("🔥 ERROR:", err);
-      alert("Server error");
+      console.log("LOGIN ERROR:", err);
+      alert(err?.response?.data?.message || "Server error");
     } finally {
       setLoading(false);
-      console.log("⏹ LOADING OFF");
     }
   };
 
-  // ======================
-  // UI
-  // ======================
   return (
-    <div className="h-screen flex items-center justify-center bg-gray-100">
+    <div className="h-screen flex items-center justify-center">
       <form
         onSubmit={handleSubmit}
-        className="bg-white p-6 rounded w-[320px] shadow"
+        className="p-6 border rounded w-[320px] space-y-3"
       >
-        <h2 className="text-xl font-bold mb-4 text-center">Login</h2>
+        <h1 className="text-xl font-bold text-center">Login</h1>
 
-        {/* EMAIL */}
         <input
           name="email"
-          value={form.email}
           placeholder="Email"
           onChange={handleChange}
-          className="w-full mb-3 p-2 border rounded"
+          className="border p-2 w-full"
         />
 
-        {/* PASSWORD */}
         <input
           name="password"
           type="password"
-          value={form.password}
           placeholder="Password"
           onChange={handleChange}
-          className="w-full mb-3 p-2 border rounded"
+          className="border p-2 w-full"
         />
 
-        {/* BUTTON */}
         <button
           disabled={loading}
-          className="w-full bg-blue-500 text-white p-2 rounded"
+          className="bg-blue-500 text-white w-full p-2 rounded"
         >
           {loading ? "Loading..." : "Login"}
         </button>
 
-        {/* REGISTER LINK */}
-        <div className="text-center mt-3 text-sm">
-          <span>Don't have an account? </span>
-          <Link to="/register" className="text-blue-500 hover:underline">
+        <div className="text-center text-sm">
+          <Link to="/register" className="text-blue-500">
             Register
           </Link>
         </div>

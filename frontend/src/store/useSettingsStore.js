@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import api from "../utils/api";
 
 const defaultSettings = {
   dailyNew: 20,
@@ -41,13 +42,12 @@ export const useSettingsStore = create((set, get) => ({
     set({ settings: merged });
   },
 
-  // ===== LOAD FROM API =====
+  // ===== LOAD FROM API (FIXED) =====
   fetchSettings: async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/settings");
-      const data = await res.json();
+      const res = await api.get("/settings");
 
-      get().setSettings(data);
+      get().setSettings(res.data);
     } catch (e) {
       console.log("fetch settings error", e);
     }

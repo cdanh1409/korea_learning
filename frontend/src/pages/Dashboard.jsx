@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../components/common/Card";
+import api from "../utils/api";
 
 import {
   LineChart,
@@ -14,6 +15,9 @@ import {
   Pie,
   Cell,
 } from "recharts";
+
+// ================= SAFE =================
+const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -36,231 +40,179 @@ export default function Dashboard() {
     exercise: { current: 0, total: 20 },
   });
 
+  // ================= FETCH =================
   useEffect(() => {
     const token = localStorage.getItem("token");
 
     if (!token) {
-      navigate("/login");
+      navigate("/login", { replace: true });
       return;
     }
 
     const fetchData = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/dashboard/summary", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        const res = await api.get("/dashboard/summary");
+        const data = res.data;
+
+        setStats({
+          weekNew: safeNumber(data?.stats?.weekNew),
+          weekReview: safeNumber(data?.stats?.weekReview),
+          goalNew: 60,
+          goalReview: 50,
+          streak: safeNumber(data?.stats?.streak),
         });
 
-        if (!res.ok) throw new Error("API error");
+        setWeeklyData(data?.weeklyData || []);
 
-        const data = await res.json();
+        setTopik({
+          level12: safeNumber(data?.topik?.level12),
+          level34: safeNumber(data?.topik?.level34),
+        });
 
-        setStats(
-          data?.stats ?? {
-            weekNew: 0,
-            weekReview: 0,
-            goalNew: 60,
-            goalReview: 50,
-            streak: 0,
+        setWeekGoal({
+          new: {
+            current: safeNumber(data?.weekGoal?.new?.current),
+            total: 60,
           },
-        );
-
-        setWeeklyData(data?.weeklyData ?? []);
-        setTopik(data?.topik ?? { level12: 0, level34: 0 });
-
-        setWeekGoal(
-          data?.weekGoal ?? {
-            new: { current: 0, total: 60 },
-            review: { current: 0, total: 50 },
-            exercise: { current: 0, total: 20 },
+          review: {
+            current: safeNumber(data?.weekGoal?.review?.current),
+            total: 50,
           },
-        );
+          exercise: {
+            current: safeNumber(data?.weekGoal?.exercise?.current),
+            total: 20,
+          },
+        });
       } catch (err) {
-        console.log("Dashboard error:", err);
+        if (err?.response?.status === 401) {
+          localStorage.removeItem("token");
+          navigate("/login", { replace: true });
+        }
+        console.log("FETCH ERROR:", err);
       }
     };
 
     fetchData();
   }, [navigate]);
 
-  const progress = stats.goalNew
-    ? Math.round((stats.weekNew / stats.goalNew) * 100)
-    : 0;
+  // ================= CALC =================
+  const weekNew = safeNumber(stats.weekNew);
+  const weekReview = safeNumber(stats.weekReview);
 
-  const chartData = weeklyData.map((v, i) => ({
-    day: `D${i + 1}`,
-    words: Number(v || 0),
-  }));
+  const progress =
+    stats.goalNew > 0 ? Math.round((weekNew / stats.goalNew) * 100) : 0;
 
-  const pieData = [
-    { name: "TOPIK I", value: topik.level12 },
-    { name: "TOPIK II", value: topik.level34 },
-  ];
+  // ================= CHART DATA =================
+  const chartData = weeklyData.map((v, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
 
-  const COLORS = ["var(--primary)", "var(--muted)"];
+    return {
+      day: d.toLocaleDateString("vi-VN", { weekday: "short" }),
+      words: safeNumber(v),
+    };
+  });
 
-  const totalTopik = topik.level12 + topik.level34;
+  // ================= TOPIK =================
+  const level12 = safeNumber(topik.level12);
+  const level34 = safeNumber(topik.level34);
+  const totalTopik = level12 + level34;
+
+  const pieData =
+    totalTopik > 0
+      ? [
+          { name: "TOPIK I", value: level12 },
+          { name: "TOPIK II", value: level34 },
+        ]
+      : [{ name: "No data", value: 1 }];
+
+  const COLORS = ["#6366f1", "#94a3b8"];
 
   return (
-    <div
-      className="p-6 space-y-6 min-h-screen"
-      style={{ background: "var(--bg)", color: "var(--text)" }}
-    >
-      {/* ================= HERO ================= */}
-      <div
-        className="rounded-2xl p-6 relative overflow-hidden border"
-        style={{
-          background: "var(--card)",
-          borderColor: "var(--border)",
-        }}
-      >
-        <div
-          className="absolute -top-20 -right-20 w-[300px] h-[300px] blur-3xl opacity-20"
-          style={{ background: "var(--primary)" }}
-        />
-
+    <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
+      {/* HERO */}
+      <div className="rounded-2xl p-6 border bg-[var(--card)]">
         <h1 className="text-2xl font-bold">Xin chào {user} 👋</h1>
-
-        <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-          Tiếp tục giữ streak nhé 🔥
-        </p>
-
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={() => navigate("/learn")}
-            className="px-4 py-2 rounded-xl font-semibold text-white transition hover:scale-[1.03]"
-            style={{
-              background: "var(--primary)",
-              boxShadow: "0 10px 30px var(--glow)",
-            }}
-          >
-            🚀 Học ngay
-          </button>
-
-          <button
-            onClick={() => navigate("/review")}
-            className="px-4 py-2 rounded-xl transition hover:scale-[1.03]"
-            style={{
-              background: "var(--card2)",
-              color: "var(--text)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            🔁 Ôn tập
-          </button>
-        </div>
+        <p className="text-sm opacity-70">Tiếp tục giữ streak 🔥</p>
       </div>
 
-      {/* ================= STATS ================= */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* STATS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Tiến độ tuần
-          </p>
-
+          <p>Tiến độ tuần</p>
           <p className="text-2xl font-bold">{progress}%</p>
 
-          <div
-            className="w-full h-2 rounded-full mt-2"
-            style={{ background: "var(--card2)" }}
-          >
+          <div className="h-2 bg-[var(--card2)] rounded mt-2">
             <div
-              className="h-2 rounded-full"
-              style={{
-                width: `${progress}%`,
-                background: "var(--primary)",
-              }}
+              className="h-2 bg-[var(--primary)] rounded"
+              style={{ width: `${progress}%` }}
             />
           </div>
-
-          <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-            {stats.weekNew}/{stats.goalNew}
-          </p>
         </Card>
 
         <Card>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Từ mới
-          </p>
-          <p className="text-3xl font-bold text-[var(--primary)]">
-            {stats.weekNew}
-          </p>
+          <p>Từ mới</p>
+          <p className="text-2xl font-bold">{weekNew}</p>
         </Card>
 
         <Card>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Ôn tập
-          </p>
-          <p className="text-3xl font-bold">{stats.weekReview}</p>
+          <p>Ôn tập</p>
+          <p className="text-2xl font-bold">{weekReview}</p>
         </Card>
 
         <Card>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Chuỗi
-          </p>
-          <p className="text-3xl font-bold">🔥 {stats.streak}</p>
+          <p>Chuỗi</p>
+          <p className="text-2xl font-bold">🔥 {stats.streak}</p>
         </Card>
       </div>
 
-      {/* ================= CHART ================= */}
+      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* LINE */}
-        <Card className="lg:col-span-2">
-          <h3 className="font-semibold mb-3">📈 7 ngày gần nhất</h3>
+        <Card className="col-span-1 lg:col-span-2">
+          <h3>7 ngày</h3>
 
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={250}>
             <LineChart data={chartData}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="var(--border)"
-                opacity={0.4}
-              />
-
-              <XAxis dataKey="day" stroke="var(--muted)" />
-              <YAxis stroke="var(--muted)" />
-
+              <CartesianGrid opacity={0.2} />
+              <XAxis dataKey="day" />
+              <YAxis />
               <Tooltip />
-
               <Line
                 type="monotone"
                 dataKey="words"
-                stroke="var(--primary)"
+                stroke="#6366f1"
                 strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 7 }}
               />
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
-        {/* PIE - FIX FULL UI */}
+        {/* PIE */}
         <Card>
-          <h3 className="font-semibold mb-3">🎯 TOPIK</h3>
+          <h3>TOPIK</h3>
 
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
                 data={pieData}
                 dataKey="value"
-                innerRadius={55}
+                innerRadius={60}
                 outerRadius={80}
                 paddingAngle={4}
-                stroke="none"
               >
                 {pieData.map((_, i) => (
                   <Cell key={i} fill={COLORS[i]} />
                 ))}
               </Pie>
 
-              {/* CENTER TEXT (RESTORED FULL UI) */}
               <text
                 x="50%"
                 y="45%"
                 textAnchor="middle"
-                fontSize="20"
-                fill="var(--text)"
+                fontSize={22}
                 fontWeight="bold"
+                fill="var(--text)"
               >
                 {totalTopik}
               </text>
@@ -269,51 +221,51 @@ export default function Dashboard() {
                 x="50%"
                 y="60%"
                 textAnchor="middle"
-                fontSize="12"
+                fontSize={12}
                 fill="var(--muted)"
               >
-                Total
+                từ đã học
               </text>
 
               <Tooltip
-                formatter={(value, name) => [`${value} từ`, name]}
-                contentStyle={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "12px",
+                formatter={(value) => {
+                  const percent =
+                    totalTopik > 0 ? Math.round((value / totalTopik) * 100) : 0;
+
+                  return [`${value} từ (${percent}%)`, ""];
                 }}
               />
             </PieChart>
           </ResponsiveContainer>
 
-          <div className="flex justify-center gap-4 mt-2 text-xs">
-            <span style={{ color: "var(--primary)" }}>■ TOPIK I</span>
-            <span style={{ color: "var(--muted)" }}>■ TOPIK II</span>
+          <div className="flex justify-center gap-4 text-sm">
+            <span style={{ color: COLORS[0] }}>■ TOPIK I</span>
+            <span style={{ color: COLORS[1] }}>■ TOPIK II</span>
           </div>
         </Card>
 
-        {/* GOAL */}
+        {/* GOALS */}
         <Card>
-          <h3 className="font-semibold mb-3">🎯 Mục tiêu</h3>
+          <h3>Mục tiêu</h3>
 
-          <div className="space-y-3 text-sm">
-            <Row label="Từ mới" value={weekGoal.new} />
-            <Row label="Ôn tập" value={weekGoal.review} />
-            <Row label="Bài tập" value={weekGoal.exercise} />
-          </div>
+          <Row label="Từ mới" value={weekGoal.new} />
+          <Row label="Ôn tập" value={weekGoal.review} />
+          <Row label="Bài tập" value={weekGoal.exercise} />
         </Card>
       </div>
     </div>
   );
 }
 
-/* ================= helper ================= */
+// ================= ROW =================
 function Row({ label, value }) {
+  const safe = (v) => (isNaN(Number(v)) ? 0 : Number(v));
+
   return (
-    <div className="flex justify-between">
-      <span style={{ color: "var(--muted)" }}>{label}</span>
+    <div className="flex justify-between text-sm py-1">
+      <span>{label}</span>
       <span>
-        {value.current}/{value.total}
+        {safe(value?.current)}/{safe(value?.total)}
       </span>
     </div>
   );
