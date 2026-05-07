@@ -18,11 +18,10 @@ import {
 // ================= SAFE =================
 const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
-// ================= THEME COLORS =================
+// ================= COLORS =================
 const COLORS = {
   primary: "var(--primary)",
   warning: "var(--warning)",
-  text: "var(--text)",
   muted: "var(--muted)",
   border: "var(--border)",
 };
@@ -58,7 +57,7 @@ export default function Stats() {
         setWeeklyScore(data?.weeklyScore ?? []);
         setError("");
       } catch (err) {
-        console.log("Stats error:", err);
+        console.log(err);
         setError("Không tải được dữ liệu");
 
         setStatsData({
@@ -83,86 +82,84 @@ export default function Stats() {
       ? Math.round((statsData.masteredWords / statsData.totalWords) * 100)
       : 0;
 
-  const totalTopik = statsData.masteredWords + statsData.weakWords;
+  const totalTopik = statsData.totalWords;
 
-  // ================= CHART DATA =================
+  // ================= CHART =================
   const trendData = useMemo(() => {
-    return Array.isArray(weeklyScore)
-      ? weeklyScore.map((v, i) => ({
-          day: `D${i + 1}`,
-          score: safeNumber(v),
-        }))
-      : [];
+    return weeklyScore.map((v, i) => ({
+      day: `D${i + 1}`,
+      score: safeNumber(v),
+    }));
   }, [weeklyScore]);
 
-  // ================= PIE DATA (TOPIK) =================
-  const pieData = [
-    {
-      name: "TOPIK I",
-      value: statsData.masteredWords,
-    },
-    {
-      name: "TOPIK II",
-      value: statsData.weakWords,
-    },
-  ];
+  // ================= PIE (FIXED) =================
+  const pieData = useMemo(() => {
+    const mastered = Math.min(statsData.masteredWords, statsData.totalWords);
+
+    const remaining = Math.max(statsData.totalWords - mastered, 0);
+
+    return [
+      { name: "Đã thuộc", value: mastered },
+      { name: "Cần ôn", value: remaining },
+    ];
+  }, [statsData]);
 
   // ================= INSIGHT =================
   const insight = useMemo(() => {
-    if (progress >= 80) return "🔥 Học rất tốt!";
-    if (progress >= 50) return "📈 Ổn định!";
-    if (progress >= 20) return "⚠️ Cần cố gắng!";
-    return "🧠 Bắt đầu học đi!";
+    if (progress >= 80) return "🔥 Rất tốt";
+    if (progress >= 50) return "📈 Ổn định";
+    if (progress >= 20) return "⚠️ Cần cải thiện";
+    return "🧠 Bắt đầu học";
   }, [progress]);
 
   // ================= LOADING =================
   if (loading) {
     return (
-      <div className="p-6">
-        <Card>⏳ Đang tải thống kê...</Card>
+      <div className="p-3">
+        <Card>⏳ Loading...</Card>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <div className="p-2 space-y-3 bg-[var(--bg)] text-[var(--text)] min-h-screen">
       {/* ERROR */}
       {error && (
         <Card>
-          <p className="text-red-500">❌ {error}</p>
+          <p className="text-red-500 text-sm">❌ {error}</p>
         </Card>
       )}
 
       {/* HEADER */}
       <Card>
-        <h2 className="text-xl font-bold">📊 TOPIK Statistics</h2>
-        <p style={{ color: COLORS.muted }}>{insight}</p>
+        <h2 className="text-sm font-semibold">TOPIK Stats</h2>
+        <p className="text-xs text-[var(--muted)]">{insight}</p>
       </Card>
 
-      {/* STATS GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* GRID */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Card>
-          <p style={{ color: COLORS.muted }}>Tổng từ</p>
-          <h2 className="text-3xl font-bold">{statsData.totalWords}</h2>
+          <p className="text-xs text-[var(--muted)]">Tổng</p>
+          <h2 className="text-xl font-bold">{statsData.totalWords}</h2>
         </Card>
 
         <Card>
-          <p style={{ color: COLORS.muted }}>TOPIK I</p>
-          <h2 className="text-3xl font-bold text-green-500">
+          <p className="text-xs text-[var(--muted)]">Đã thuộc</p>
+          <h2 className="text-xl font-bold text-green-500">
             {statsData.masteredWords}
           </h2>
         </Card>
 
         <Card>
-          <p style={{ color: COLORS.muted }}>TOPIK II</p>
-          <h2 className="text-3xl font-bold text-orange-500">
-            {statsData.weakWords}
+          <p className="text-xs text-[var(--muted)]">Cần ôn</p>
+          <h2 className="text-xl font-bold text-orange-500">
+            {statsData.totalWords - statsData.masteredWords}
           </h2>
         </Card>
 
         <Card>
-          <p style={{ color: COLORS.muted }}>Điểm TB</p>
-          <h2 className="text-3xl font-bold text-blue-500">
+          <p className="text-xs text-[var(--muted)]">Avg</p>
+          <h2 className="text-xl font-bold text-blue-500">
             {Number(statsData.avgScore).toFixed(1)}
           </h2>
         </Card>
@@ -170,120 +167,69 @@ export default function Stats() {
 
       {/* PROGRESS */}
       <Card>
-        <div className="flex justify-between mb-2">
-          <span style={{ color: COLORS.muted }}>Progress</span>
-          <span className="font-bold">{progress}%</span>
+        <div className="flex justify-between text-xs mb-1">
+          <span className="text-[var(--muted)]">Progress</span>
+          <span>{progress}%</span>
         </div>
 
-        <div className="w-full h-2 rounded-full bg-[var(--card2)] overflow-hidden">
+        <div className="h-2 bg-[var(--card2)] rounded-full overflow-hidden">
           <div
-            className="h-2 rounded-full transition-all duration-500"
-            style={{
-              width: `${progress}%`,
-              background: "var(--primary)",
-            }}
+            className="h-2 bg-[var(--primary)]"
+            style={{ width: `${progress}%` }}
           />
         </div>
       </Card>
 
       {/* CHARTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* BAR CHART */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        {/* BAR */}
         <Card>
-          <h3 className="font-semibold mb-4">📈 Weekly Performance</h3>
+          <h3 className="text-sm mb-2">📈 Weekly</h3>
 
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={trendData}>
-              <CartesianGrid stroke={COLORS.border} opacity={0.3} />
-              <XAxis dataKey="day" stroke={COLORS.muted} />
-              <YAxis stroke={COLORS.muted} />
-
-              <Tooltip
-                contentStyle={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text)",
-                  borderRadius: "10px",
-                }}
-              />
-
+              <CartesianGrid stroke={COLORS.border} opacity={0.2} />
+              <XAxis dataKey="day" />
+              <YAxis />
+              <Tooltip />
               <Bar
                 dataKey="score"
                 fill="var(--primary)"
-                radius={[6, 6, 0, 0]}
+                radius={[4, 4, 0, 0]}
               />
             </BarChart>
           </ResponsiveContainer>
         </Card>
 
-        {/* PIE CHART */}
+        {/* PIE */}
         <Card>
-          <h3 className="font-semibold mb-4">📊 TOPIK Distribution</h3>
+          <h3 className="text-sm mb-2">📊 Distribution</h3>
 
-          <div className="flex flex-col lg:flex-row items-center gap-6">
-            <PieChart width={260} height={260}>
+          <div className="flex items-center gap-3">
+            <PieChart width={180} height={180}>
               <Pie
                 data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
+                innerRadius={40}
+                outerRadius={60}
                 dataKey="value"
-                stroke="none"
               >
                 <Cell fill="var(--primary)" />
                 <Cell fill="var(--warning)" />
               </Pie>
-
-              {/* TOOLTIP DETAIL */}
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-
-                  const data = payload[0];
-                  const percent =
-                    totalTopik > 0
-                      ? Math.round((data.value / totalTopik) * 100)
-                      : 0;
-
-                  return (
-                    <div
-                      style={{
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        padding: "10px 12px",
-                        borderRadius: "10px",
-                        color: "var(--text)",
-                      }}
-                    >
-                      <p className="font-semibold">{data.name}</p>
-                      <p style={{ color: COLORS.muted }}>{data.value} từ</p>
-                      <p style={{ color: "var(--primary)" }}>{percent}%</p>
-                    </div>
-                  );
-                }}
-              />
             </PieChart>
 
-            {/* CENTER */}
-            <div className="text-center">
-              <p style={{ color: COLORS.muted }}>TOPIK Total</p>
-              <h2 className="text-3xl font-bold">{totalTopik}</h2>
-            </div>
+            <div className="text-xs space-y-1">
+              <div>Total: {totalTopik}</div>
 
-            {/* LEGEND */}
-            <div className="text-sm space-y-2">
-              {pieData.map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
+              {pieData.map((d, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <span
+                    className="w-2 h-2 rounded-full"
                     style={{
                       background: i === 0 ? "var(--primary)" : "var(--warning)",
                     }}
                   />
-                  <span>
-                    {item.name}: {item.value}
-                  </span>
+                  {d.name}: {d.value}
                 </div>
               ))}
             </div>

@@ -24,10 +24,8 @@ export default function Dashboard() {
   const [user] = useState("Danh");
 
   const [stats, setStats] = useState({
-    weekNew: 0,
-    weekReview: 0,
-    goalNew: 60,
-    goalReview: 50,
+    newWords: 0,
+    reviewedWords: 0,
     streak: 0,
   });
 
@@ -54,15 +52,15 @@ export default function Dashboard() {
         const res = await api.get("/dashboard/summary");
         const data = res.data;
 
+        console.log("📊 DASHBOARD RAW:", data);
+
         setStats({
-          weekNew: safeNumber(data?.stats?.weekNew),
-          weekReview: safeNumber(data?.stats?.weekReview),
-          goalNew: 60,
-          goalReview: 50,
+          newWords: safeNumber(data?.stats?.newWords),
+          reviewedWords: safeNumber(data?.stats?.reviewedWords),
           streak: safeNumber(data?.stats?.streak),
         });
 
-        setWeeklyData(data?.weeklyData || []);
+        setWeeklyData(Array.isArray(data?.weeklyData) ? data.weeklyData : []);
 
         setTopik({
           level12: safeNumber(data?.topik?.level12),
@@ -84,38 +82,38 @@ export default function Dashboard() {
           },
         });
       } catch (err) {
+        console.log("❌ FETCH ERROR:", err);
+
         if (err?.response?.status === 401) {
           localStorage.removeItem("token");
           navigate("/login", { replace: true });
         }
-        console.log("FETCH ERROR:", err);
       }
     };
 
     fetchData();
   }, [navigate]);
 
-  // ================= CALC =================
-  const weekNew = safeNumber(stats.weekNew);
-  const weekReview = safeNumber(stats.weekReview);
-
+  // ================= PROGRESS =================
   const progress =
-    stats.goalNew > 0 ? Math.round((weekNew / stats.goalNew) * 100) : 0;
+    stats.reviewedWords > 0 ? Math.round((stats.reviewedWords / 50) * 100) : 0;
 
   // ================= CHART DATA =================
-  const chartData = weeklyData.map((v, i) => {
+  const chartData = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
 
+    const value = safeNumber(weeklyData?.[i]);
+
     return {
       day: d.toLocaleDateString("vi-VN", { weekday: "short" }),
-      words: safeNumber(v),
+      reviews: value,
     };
   });
 
   // ================= TOPIK =================
-  const level12 = safeNumber(topik.level12);
-  const level34 = safeNumber(topik.level34);
+  const level12 = safeNumber(topik?.level12);
+  const level34 = safeNumber(topik?.level34);
   const totalTopik = level12 + level34;
 
   const pieData =
@@ -124,7 +122,7 @@ export default function Dashboard() {
           { name: "TOPIK I", value: level12 },
           { name: "TOPIK II", value: level34 },
         ]
-      : [{ name: "No data", value: 1 }];
+      : [{ name: "EMPTY", value: 1 }];
 
   const COLORS = ["#6366f1", "#94a3b8"];
 
@@ -151,13 +149,13 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <p>Từ mới</p>
-          <p className="text-2xl font-bold">{weekNew}</p>
+          <p>Từ chưa học</p>
+          <p className="text-2xl font-bold">{stats.newWords}</p>
         </Card>
 
         <Card>
-          <p>Ôn tập</p>
-          <p className="text-2xl font-bold">{weekReview}</p>
+          <p>Đã học (7 ngày)</p>
+          <p className="text-2xl font-bold">{stats.reviewedWords}</p>
         </Card>
 
         <Card>
@@ -168,7 +166,7 @@ export default function Dashboard() {
 
       {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* LINE */}
+        {/* LINE CHART */}
         <Card className="col-span-1 lg:col-span-2">
           <h3>7 ngày</h3>
 
@@ -180,7 +178,7 @@ export default function Dashboard() {
               <Tooltip />
               <Line
                 type="monotone"
-                dataKey="words"
+                dataKey="reviews"
                 stroke="#6366f1"
                 strokeWidth={3}
               />
@@ -188,57 +186,56 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </Card>
 
-        {/* PIE */}
+        {/* PIE CHART */}
         <Card>
           <h3>TOPIK</h3>
 
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={4}
-              >
-                {pieData.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i]} />
-                ))}
-              </Pie>
+          {totalTopik === 0 ? (
+            <div className="h-[220px] flex items-center justify-center text-sm opacity-60">
+              Chưa có dữ liệu TOPIK
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={4}
+                >
+                  {pieData.map((_, i) => (
+                    <Cell key={i} fill={COLORS[i]} />
+                  ))}
+                </Pie>
 
-              <text
-                x="50%"
-                y="45%"
-                textAnchor="middle"
-                fontSize={22}
-                fontWeight="bold"
-                fill="var(--text)"
-              >
-                {totalTopik}
-              </text>
+                <text
+                  x="50%"
+                  y="45%"
+                  textAnchor="middle"
+                  fontSize={22}
+                  fontWeight="bold"
+                  fill="var(--text)"
+                >
+                  {totalTopik}
+                </text>
 
-              <text
-                x="50%"
-                y="60%"
-                textAnchor="middle"
-                fontSize={12}
-                fill="var(--muted)"
-              >
-                từ đã học
-              </text>
+                <text
+                  x="50%"
+                  y="60%"
+                  textAnchor="middle"
+                  fontSize={12}
+                  fill="var(--muted)"
+                >
+                  từ đã học
+                </text>
 
-              <Tooltip
-                formatter={(value) => {
-                  const percent =
-                    totalTopik > 0 ? Math.round((value / totalTopik) * 100) : 0;
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
 
-                  return [`${value} từ (${percent}%)`, ""];
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-
-          <div className="flex justify-center gap-4 text-sm">
+          <div className="flex justify-center gap-4 text-sm mt-2">
             <span style={{ color: COLORS[0] }}>■ TOPIK I</span>
             <span style={{ color: COLORS[1] }}>■ TOPIK II</span>
           </div>
@@ -248,8 +245,8 @@ export default function Dashboard() {
         <Card>
           <h3>Mục tiêu</h3>
 
-          <Row label="Từ mới" value={weekGoal.new} />
-          <Row label="Ôn tập" value={weekGoal.review} />
+          <Row label="Đã học" value={weekGoal.review} />
+          <Row label="Chưa học" value={weekGoal.new} />
           <Row label="Bài tập" value={weekGoal.exercise} />
         </Card>
       </div>

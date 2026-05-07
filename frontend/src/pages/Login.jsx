@@ -30,27 +30,49 @@ export default function Login() {
     try {
       setLoading(true);
 
+      console.log("🔥 LOGIN START");
+      console.log("📤 FORM DATA:", form);
+
       // ================= AXIOS CALL =================
       const res = await api.post("/auth/login", form);
+
+      console.log("🔥 FULL RESPONSE:", res);
+      console.log("🔥 RESPONSE DATA:", res.data);
+
       const data = res.data;
 
+      // ================= DEBUG TOKEN PARSING =================
       const token = data?.token;
       const user = data?.user;
 
+      console.log("🔑 TOKEN RAW:", token);
+      console.log("👤 USER RAW:", user);
+
       if (!token) {
+        console.log("❌ TOKEN IS NULL → CHECK BACKEND RESPONSE STRUCTURE");
         alert(data?.message || "Login failed");
         return;
       }
 
+      // ================= SAVE =================
       setToken(token);
       setUser(user);
 
+      localStorage.setItem("token", token);
+
+      console.log("💾 SAVED TOKEN:", localStorage.getItem("token"));
+
+      console.log("🚀 LOGIN SUCCESS → NAVIGATE");
+
       navigate("/");
     } catch (err) {
-      console.log("LOGIN ERROR:", err);
+      console.log("❌ LOGIN ERROR FULL:", err);
+      console.log("❌ RESPONSE ERROR:", err?.response?.data);
+
       alert(err?.response?.data?.message || "Server error");
     } finally {
       setLoading(false);
+      console.log("🏁 LOGIN FINISHED");
     }
   };
 

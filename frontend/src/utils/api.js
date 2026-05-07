@@ -2,27 +2,37 @@ import axios from "axios";
 
 // ================= CREATE INSTANCE =================
 const api = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: import.meta.env.VITE_API_URL,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
 // ================= REQUEST INTERCEPTOR =================
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
 
-    console.log("📦 API CALL:", config.url);
-    console.log("🔑 TOKEN:", token);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  console.log("================================");
+  console.log("📦 API:", config.url);
+  console.log("🔑 TOKEN RAW:", token);
+  console.log("🔑 TOKEN TYPE:", typeof token);
+  console.log("================================");
 
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
+  if (!token) {
+    console.log("❌ TOKEN MISSING → REQUEST WITHOUT AUTH");
+  }
+
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Bearer ${token}`,
+    };
+
+    console.log("✅ AUTH HEADER ATTACHED");
+  }
+
+  return config;
+});
 
 // ================= RESPONSE INTERCEPTOR =================
 api.interceptors.response.use(

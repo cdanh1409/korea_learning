@@ -37,6 +37,7 @@ export default function Review() {
   });
 
   const [emptyTopic, setEmptyTopic] = useState(false);
+  const [forceLearnFirst, setForceLearnFirst] = useState(false);
 
   const timeoutRef = useRef(null);
   const lockRef = useRef(false);
@@ -58,6 +59,16 @@ export default function Review() {
         ]);
 
         const topicData = topicsRes.data || [];
+
+        // ✅ CHECK SAU KHI CÓ DATA
+        const hasNoVocabulary =
+          topicData.length === 0 ||
+          topicData.every((t) => (t.total || 0) === 0);
+
+        if (hasNoVocabulary) {
+          setForceLearnFirst(true);
+          return;
+        }
 
         setTopics(topicData);
 
@@ -99,9 +110,19 @@ export default function Review() {
 
     const res = await api.get(`/review?topicId=${topic.Id}`);
 
-    if (!res.data || res.data.length === 0) {
+    // Nếu API trả về null/undefined → mới coi là lỗi
+    if (!res.data) {
       setWords([]);
       setEmptyTopic(true);
+      return;
+    }
+
+    // Nếu rỗng → KHÔNG coi là chưa học ngay
+    if (res.data.length === 0) {
+      console.warn("Không có từ để ôn, có thể do chưa tới lịch review");
+
+      setWords([]);
+      setEmptyTopic(true); // vẫn show UI cũ
       return;
     }
 
@@ -176,7 +197,48 @@ export default function Review() {
     stats.easy + stats.again > 0
       ? Math.round((stats.easy / (stats.easy + stats.again)) * 100)
       : 0;
+  if (forceLearnFirst) {
+    return (
+      <div className="flex justify-center p-6">
+        <Card className="p-10 text-center space-y-4 max-w-md">
+          <h2 className="text-2xl font-bold">📚 Chưa có từ vựng</h2>
 
+          <p className="text-[var(--muted)]">
+            Bạn cần học từ vựng trước khi ôn tập
+          </p>
+
+          <button
+            onClick={() => (window.location.href = "/learn")}
+            className="px-6 py-3 rounded-xl text-white"
+            style={{ background: "var(--primary)" }}
+          >
+            🚀 Đi học từ vựng
+          </button>
+        </Card>
+      </div>
+    );
+  }
+  if (forceLearnFirst) {
+    return (
+      <div className="flex justify-center p-6">
+        <Card className="p-10 text-center space-y-4 max-w-md">
+          <h2 className="text-2xl font-bold">📚 Chưa có từ vựng</h2>
+
+          <p className="text-[var(--muted)]">
+            Bạn cần học từ vựng trước khi ôn tập
+          </p>
+
+          <button
+            onClick={() => (window.location.href = "/learn")}
+            className="px-6 py-3 rounded-xl text-white"
+            style={{ background: "var(--primary)" }}
+          >
+            🚀 Đi học từ vựng
+          </button>
+        </Card>
+      </div>
+    );
+  }
   // ================= UI =================
   return (
     <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
@@ -206,16 +268,22 @@ export default function Review() {
       {!selectedTopic && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
           {topics.map((t) => {
-            const percent = t.total
-              ? Math.round((t.learned / t.total) * 100)
-              : 0;
+            const percent = t.total ? Math.round((t.seen / t.total) * 100) : 0;
+
+            const isNotLearned = !t.seen || t.seen === 0;
+            const isCompleted = t.seen === t.total && t.total > 0;
 
             return (
               <motion.div
                 key={t.Id}
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => handleSelectTopic(t)}
+                onClick={() => {
+                  if (isNotLearned) {
+                    window.location.href = "/learn";
+                    return;
+                  }
+                  handleSelectTopic(t);
+                }}
                 className="cursor-pointer p-6 rounded-2xl shadow-md"
                 style={{
                   background: "var(--card)",
@@ -230,12 +298,20 @@ export default function Review() {
                 </h2>
 
                 <p className="text-sm text-[var(--muted)] mt-2">
-                  Đã học: {t.seen || 0}/{t.total}
+                  {isNotLearned
+                    ? "⚠ Chưa học - bắt đầu học"
+                    : `Đã học: ${t.seen}/${t.total}`}
                 </p>
 
                 <p className="text-sm text-[var(--muted)]">
-                  Đã nhớ: {t.learned}/{t.total}
+                  Đã nhớ: {t.mastered || 0}/{t.total}
                 </p>
+
+                {isCompleted && (
+                  <span className="text-green-500 font-bold">
+                    ✔ Đã hoàn thành
+                  </span>
+                )}
 
                 <div className="mt-4 h-2 rounded-full bg-[var(--card2)]">
                   <div
@@ -258,7 +334,7 @@ export default function Review() {
             <h2 className="text-3xl font-bold">📭 Chưa học chủ đề này</h2>
 
             <p className="text-[var(--muted)]">
-              Bạn chưa có từ vựng nào trong chủ đề <b>{selectedTopic.Name}</b>
+              Bạn chưa học chủ đề <b>{selectedTopic.Name}</b>
             </p>
 
             <button

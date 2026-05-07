@@ -1,6 +1,16 @@
 const { pool, poolConnect, sql } = require("../config/db");
+const sm2 = require("../utils/srs");
 
-/* ================= GET TOPICS (FIXED - NO UNLEARNED TOPIC) ================= */
+/* ================= QUALITY MAP ================= */
+const LEVEL_TO_QUALITY = {
+  again: 1,
+  hard: 2,
+  normal: 3,
+  easy: 4,
+  perfect: 5,
+};
+
+/* ================= GET TOPICS ================= */
 exports.getTopics = async (req, res) => {
   try {
     await poolConnect;
@@ -9,11 +19,12 @@ exports.getTopics = async (req, res) => {
       SELECT 
         t.Id,
         t.Name,
-        COUNT(v.Id) AS WordCount,
-        MAX(v.Level) AS Level
+        t.Level,
+        COUNT(v.Id) AS WordCount
       FROM Topics t
-      JOIN Vocabulary v ON v.TopicId = t.Id
-      GROUP BY t.Id, t.Name
+      LEFT JOIN Vocabulary v ON v.TopicId = t.Id
+      GROUP BY t.Id, t.Name, t.Level
+      ORDER BY t.Id
     `);
 
     res.json(result.recordset || []);
@@ -23,7 +34,7 @@ exports.getTopics = async (req, res) => {
   }
 };
 
-/* ================= GET VOCAB (ONLY USER PROGRESS VOCAB) ================= */
+/* ================= GET VOCAB ================= */
 exports.getAllVocabulary = async (req, res) => {
   try {
     await poolConnect;
@@ -47,14 +58,16 @@ exports.getAllVocabulary = async (req, res) => {
           v.AudioUrl,
           v.Level,
           v.TopicId,
-          p.CorrectCount,
-          p.WrongCount,
+
+          ISNULL(p.Repetition, 0) AS Repetition,
+          ISNULL(p.IntervalDays, 0) AS IntervalDays,
+          ISNULL(p.EaseFactor, 2.5) AS EaseFactor,
           p.NextReview,
-          p.IsLearned
+          ISNULL(p.IsLearned, 0) AS IsLearned,
+          ISNULL(p.IsActive, 1) AS IsActive
         FROM Vocabulary v
         LEFT JOIN UserVocabularyProgress p 
-          ON p.VocabularyId = v.Id
-          AND p.UserId = @userId
+          ON p.VocabularyId = v.Id AND p.UserId = @userId
         WHERE v.TopicId = @topicId
         ORDER BY v.Id
       `);
@@ -66,7 +79,7 @@ exports.getAllVocabulary = async (req, res) => {
   }
 };
 
-/* ================= DUE WORDS (SRS CORRECT) ================= */
+/* ================= DUE WORDS ================= */
 exports.getDueWords = async (req, res) => {
   try {
     await poolConnect;
@@ -74,15 +87,24 @@ exports.getDueWords = async (req, res) => {
     const userId = req.user?.id;
 
     const result = await pool.request().input("userId", sql.Int, userId).query(`
-      SELECT v.*, p.*
-      FROM Vocabulary v
-      INNER JOIN UserVocabularyProgress p 
-        ON v.Id = p.VocabularyId
-      WHERE p.UserId = @userId
-        AND p.NextReview IS NOT NULL
-        AND p.NextReview <= GETDATE()
-      ORDER BY p.NextReview ASC
-    `);
+        SELECT 
+          v.Id,
+          v.Word,
+          v.Meaning,
+          v.Level,
+          p.Repetition,
+          p.IntervalDays,
+          p.EaseFactor,
+          p.NextReview,
+          p.IsLearned
+        FROM Vocabulary v
+        INNER JOIN UserVocabularyProgress p 
+          ON v.Id = p.VocabularyId
+        WHERE p.UserId = @userId
+          AND p.NextReview <= GETDATE()
+          AND ISNULL(p.IsActive, 1) = 1
+        ORDER BY p.NextReview ASC
+      `);
 
     res.json(result.recordset || []);
   } catch (err) {
@@ -91,9 +113,13 @@ exports.getDueWords = async (req, res) => {
   }
 };
 
-/* ================= UPDATE REVIEW (SRS FIXED CORE) ================= */
+/* ================= UPDATE REVIEW (FULL FIXED SRS CORE) ================= */
 exports.updateReview = async (req, res) => {
+  const transaction = new sql.Transaction(pool);
+
   try {
+    await poolConnect;
+
     const userId = req.user?.id;
     const { id, level } = req.body;
 
@@ -102,69 +128,110 @@ exports.updateReview = async (req, res) => {
     }
 
     const vocabId = Number(id);
+    const quality = LEVEL_TO_QUALITY[level] ?? 3;
 
-    const map = {
-      again: { correct: 0, wrong: 1, interval: 0, learned: 0 },
-      hard: { correct: 1, wrong: 0, interval: 1, learned: 0 },
-      normal: { correct: 1, wrong: 0, interval: 3, learned: 1 },
-      easy: { correct: 1, wrong: 0, interval: 7, learned: 1 },
+    await transaction.begin();
+
+    // ================= GET CURRENT STATE =================
+    const current = await new sql.Request(transaction)
+      .input("userId", sql.Int, userId)
+      .input("vocabId", sql.Int, vocabId).query(`
+        SELECT Repetition, IntervalDays, EaseFactor
+        FROM UserVocabularyProgress WITH (UPDLOCK, HOLDLOCK)
+        WHERE UserId = @userId AND VocabularyId = @vocabId
+      `);
+
+    const state = current.recordset[0] || {
+      Repetition: 0,
+      IntervalDays: 0,
+      EaseFactor: 2.5,
     };
 
-    const s = map[level] || map.normal;
+    // ================= SM2 =================
+    const result = sm2({
+      repetition: state.Repetition,
+      interval: state.IntervalDays,
+      ef: state.EaseFactor,
+      quality,
+    });
 
-    await poolConnect;
+    // ================= SAFETY =================
+    const repetition = Number.isFinite(result.repetition)
+      ? result.repetition
+      : 0;
+    const interval = Number.isFinite(result.interval) ? result.interval : 1;
+    const ef = Number.isFinite(result.ef) ? result.ef : 2.5;
 
-    // LOG
-    await pool
-      .request()
+    // ================= ANKI LOGIC =================
+    const isLearned = interval >= 21 ? 1 : 0;
+
+    const nextReview = new Date(Date.now() + interval * 86400000);
+
+    // ================= UPSERT =================
+    await new sql.Request(transaction)
+      .input("userId", sql.Int, userId)
+      .input("vocabId", sql.Int, vocabId)
+      .input("repetition", sql.Int, repetition)
+      .input("interval", sql.Int, interval)
+      .input("ef", sql.Float, ef)
+      .input("isLearned", sql.Bit, isLearned)
+      .input("nextReview", sql.DateTime, nextReview).query(`
+        IF EXISTS (
+          SELECT 1 FROM UserVocabularyProgress
+          WHERE UserId = @userId AND VocabularyId = @vocabId
+        )
+        UPDATE UserVocabularyProgress
+        SET 
+          Repetition = @repetition,
+          IntervalDays = @interval,
+          EaseFactor = @ef,
+          IsLearned = @isLearned,
+          LastReviewed = GETDATE(),
+          NextReview = @nextReview
+        WHERE UserId = @userId AND VocabularyId = @vocabId
+        ELSE
+        INSERT INTO UserVocabularyProgress (
+          UserId, VocabularyId,
+          Repetition, IntervalDays, EaseFactor,
+          IsLearned,
+          LastReviewed, NextReview, CreatedAt
+        )
+        VALUES (
+          @userId, @vocabId,
+          @repetition, @interval, @ef,
+          @isLearned,
+          GETDATE(), @nextReview, GETDATE()
+        )
+      `);
+
+    // ================= LOG =================
+    await new sql.Request(transaction)
       .input("userId", sql.Int, userId)
       .input("vocabId", sql.Int, vocabId)
       .input("level", sql.NVarChar, level).query(`
-        INSERT INTO UserVocabularyReviewLog
-        (UserId, VocabularyId, Level, CreatedAt)
-        VALUES (@userId, @vocabId, @level, GETDATE())
+        INSERT INTO UserVocabularyReviewLog (
+          UserId, VocabularyId, Level, CreatedAt
+        )
+        VALUES (
+          @userId, @vocabId, @level, GETDATE()
+        )
       `);
 
-    // UPSERT
-    await pool
-      .request()
-      .input("userId", sql.Int, userId)
-      .input("vocabId", sql.Int, vocabId)
-      .input("correct", sql.Int, s.correct)
-      .input("wrong", sql.Int, s.wrong)
-      .input("interval", sql.Int, s.interval)
-      .input("learned", sql.Bit, s.learned).query(`
-        MERGE UserVocabularyProgress AS target
-        USING (SELECT @userId AS UserId, @vocabId AS VocabularyId) AS src
-        ON target.UserId = src.UserId AND target.VocabularyId = src.VocabularyId
+    await transaction.commit();
 
-        WHEN MATCHED THEN
-          UPDATE SET
-            CorrectCount = ISNULL(CorrectCount,0) + @correct,
-            WrongCount = ISNULL(WrongCount,0) + @wrong,
-            Repetition = ISNULL(Repetition,0) + 1,
-            IsLearned = CASE WHEN @learned = 1 THEN 1 ELSE IsLearned END,
-            LastReviewed = GETDATE(),
-            NextReview = DATEADD(DAY, @interval, GETDATE())
-
-        WHEN NOT MATCHED THEN
-          INSERT (
-            UserId, VocabularyId, CorrectCount, WrongCount,
-            Repetition, IntervalDays, EaseFactor, IsLearned,
-            LastReviewed, NextReview, CreatedAt
-          )
-          VALUES (
-            @userId, @vocabId, @correct, @wrong,
-            1, @interval, 2.5, @learned,
-            GETDATE(),
-            DATEADD(DAY, @interval, GETDATE()),
-            GETDATE()
-          );
-      `);
-
-    res.json({ success: true });
+    return res.json({
+      success: true,
+      repetition,
+      interval,
+      ef,
+      isLearned,
+      nextReview,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "server error" });
+    try {
+      await transaction.rollback();
+    } catch (_) {}
+    return res.status(500).json({ message: "server error" });
   }
 };
