@@ -21,7 +21,7 @@ const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [user] = useState("Danh");
+  const [user] = useState("Anh");
 
   const [stats, setStats] = useState({
     newWords: 0,
@@ -127,11 +127,92 @@ export default function Dashboard() {
   const COLORS = ["#6366f1", "#94a3b8"];
 
   return (
-    <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <div className="p-2 space-y-2 min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* HERO */}
-      <div className="rounded-2xl p-6 border bg-[var(--card)]">
-        <h1 className="text-2xl font-bold">Xin chào {user} 👋</h1>
-        <p className="text-sm opacity-70">Tiếp tục giữ streak 🔥</p>
+      <div
+        className="
+        rounded-3xl px-6 py-5 border
+        bg-[var(--card)]
+        flex items-center justify-between
+        overflow-hidden relative
+        min-h-[220px]
+      "
+      >
+        {/* LEFT */}
+        <div className="relative z-10 max-w-2xl">
+          <h1
+            className="
+      text-4xl font-extrabold
+      tracking-tight
+      italic
+    "
+            style={{
+              color: "var(--text)",
+            }}
+          >
+            Xin chào, {user} 👋
+          </h1>
+
+          <p
+            className="
+      mt-4 text-base leading-8
+      font-medium italic
+    "
+            style={{
+              color: "var(--muted)",
+            }}
+          >
+            Học từ vựng tiếng Hàn thông minh với AI.
+            <br />
+            <span
+              className="font-semibold"
+              style={{
+                color: "var(--text)",
+              }}
+            >
+              Cá nhân hoá lộ trình học tập và ôn tập đúng thời điểm
+            </span>{" "}
+            theo phương pháp{" "}
+            <span
+              className="
+        font-bold italic
+      "
+              style={{
+                color: "var(--primary)",
+              }}
+            >
+              Spaced Repetition
+            </span>
+            .
+          </p>
+        </div>
+
+        {/* RIGHT IMAGE */}
+        <div className="relative z-10 hidden md:flex">
+          <img
+            src="http://localhost:5000/images/dashboard.png"
+            alt="dashboard"
+            className="
+        w-52 object-contain
+        select-none pointer-events-none
+      "
+            style={{
+              filter: "drop-shadow(0 0 20px rgba(99,102,241,0.22))",
+            }}
+          />
+        </div>
+
+        {/* GLOW */}
+        <div
+          className="
+      absolute right-0 top-0
+      w-56 h-56 rounded-full
+      blur-3xl opacity-10
+    "
+          style={{
+            background: "var(--primary)",
+          }}
+        />
       </div>
 
       {/* STATS */}
@@ -168,7 +249,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* LINE CHART */}
         <Card className="col-span-1 lg:col-span-2">
-          <h3>7 ngày</h3>
+          <h3>Thống kê học tập 7 ngày gần nhất</h3>
 
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={chartData}>
@@ -188,7 +269,7 @@ export default function Dashboard() {
 
         {/* PIE CHART */}
         <Card>
-          <h3>TOPIK</h3>
+          <h3>Số từ đã học theo trình độ Topik</h3>
 
           {totalTopik === 0 ? (
             <div className="h-[220px] flex items-center justify-center text-sm opacity-60">

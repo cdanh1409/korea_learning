@@ -1,17 +1,26 @@
 const { pool, poolConnect, sql } = require("../config/db");
 
 //////////////////////////////////////////////////
-// WEEK START (MONDAY SAFE + STABLE)
+// CONFIG
+//////////////////////////////////////////////////
+const CURRENT_SETTINGS_VERSION = 1;
+
+//////////////////////////////////////////////////
+// WEEK START (UTC SAFE)
 //////////////////////////////////////////////////
 function getWeekStart() {
   const now = new Date();
 
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+  const utc = new Date(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
+  );
 
-  const monday = new Date(now);
-  monday.setDate(diff);
-  monday.setHours(0, 0, 0, 0);
+  const day = utc.getUTCDay();
+  const diff = utc.getUTCDate() - day + (day === 0 ? -6 : 1);
+
+  const monday = new Date(utc);
+  monday.setUTCDate(diff);
+  monday.setUTCHours(0, 0, 0, 0);
 
   return monday;
 }
@@ -22,32 +31,37 @@ function getWeekStart() {
 const defaultSettings = {
   learning: {
     newCardsPerDay: 20,
-    learningSteps: [1, 10], // 🔥 FIXED: array
+    learningSteps: [1, 10],
     graduatingInterval: 1,
     easyInterval: 4,
   },
+
   review: {
     maxReviewsPerDay: 100,
     easyBonus: 1.3,
     intervalModifier: 1.0,
   },
+
   lapse: {
-    relearningSteps: [1, 10], // 🔥 FIXED
+    relearningSteps: [1, 10],
     lapseIntervalMultiplier: 0.5,
     minimumInterval: 1,
   },
+
   behavior: {
     showAnswerTimer: true,
     autoFlip: false,
     allowSkip: true,
     burySiblings: true,
   },
+
   ui: {
     fontSize: 16,
     animation: true,
     soundEffect: true,
     darkMode: false,
   },
+
   notify: {
     enableReminder: true,
     reminderHour: 20,
@@ -55,60 +69,122 @@ const defaultSettings = {
 };
 
 //////////////////////////////////////////////////
-// NORMALIZE STEPS (CRITICAL FIX)
+// HELPERS
 //////////////////////////////////////////////////
+function clamp(num, min, max) {
+  return Math.min(Math.max(num, min), max);
+}
+
+function safeNumber(value, fallback) {
+  const n = Number(value);
+  return isNaN(n) ? fallback : n;
+}
+
+/**
+ * FIX BOOLEAN BUG:
+ * "false" -> false
+ * "true" -> true
+ */
+function safeBoolean(value, fallback = false) {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return fallback;
+}
+
 function normalizeSteps(value) {
-  if (Array.isArray(value)) return value.map(Number);
-  if (typeof value === "string") {
-    return value.split(",").map(Number).filter(Boolean);
+  if (Array.isArray(value)) {
+    return value.map(Number).filter((v) => !isNaN(v) && v > 0);
   }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map(Number)
+      .filter((v) => !isNaN(v) && v > 0);
+  }
+
   return [1, 10];
 }
 
 //////////////////////////////////////////////////
-// SANITIZE SETTINGS (STRICT TYPE SAFE)
+// SANITIZE SETTINGS (CORE)
 //////////////////////////////////////////////////
 function sanitizeSettings(input = {}) {
   return {
     learning: {
-      newCardsPerDay: Number(input.learning?.newCardsPerDay ?? 20),
+      newCardsPerDay: clamp(
+        safeNumber(input.learning?.newCardsPerDay, 20),
+        1,
+        999,
+      ),
+
       learningSteps: normalizeSteps(input.learning?.learningSteps),
-      graduatingInterval: Number(input.learning?.graduatingInterval ?? 1),
-      easyInterval: Number(input.learning?.easyInterval ?? 4),
+
+      graduatingInterval: clamp(
+        safeNumber(input.learning?.graduatingInterval, 1),
+        1,
+        365,
+      ),
+
+      easyInterval: clamp(safeNumber(input.learning?.easyInterval, 4), 1, 365),
     },
+
     review: {
-      maxReviewsPerDay: Number(input.review?.maxReviewsPerDay ?? 100),
-      easyBonus: Number(input.review?.easyBonus ?? 1.3),
-      intervalModifier: Number(input.review?.intervalModifier ?? 1),
+      maxReviewsPerDay: clamp(
+        safeNumber(input.review?.maxReviewsPerDay, 100),
+        1,
+        9999,
+      ),
+
+      easyBonus: clamp(safeNumber(input.review?.easyBonus, 1.3), 1, 5),
+
+      intervalModifier: clamp(
+        safeNumber(input.review?.intervalModifier, 1),
+        0.1,
+        5,
+      ),
     },
+
     lapse: {
       relearningSteps: normalizeSteps(input.lapse?.relearningSteps),
-      lapseIntervalMultiplier: Number(
-        input.lapse?.lapseIntervalMultiplier ?? 0.5,
+
+      lapseIntervalMultiplier: clamp(
+        safeNumber(input.lapse?.lapseIntervalMultiplier, 0.5),
+        0.1,
+        1,
       ),
-      minimumInterval: Number(input.lapse?.minimumInterval ?? 1),
+
+      minimumInterval: clamp(
+        safeNumber(input.lapse?.minimumInterval, 1),
+        1,
+        365,
+      ),
     },
+
     behavior: {
-      showAnswerTimer: Boolean(input.behavior?.showAnswerTimer ?? true),
-      autoFlip: Boolean(input.behavior?.autoFlip ?? false),
-      allowSkip: Boolean(input.behavior?.allowSkip ?? true),
-      burySiblings: Boolean(input.behavior?.burySiblings ?? true),
+      showAnswerTimer: safeBoolean(input.behavior?.showAnswerTimer, true),
+      autoFlip: safeBoolean(input.behavior?.autoFlip, false),
+      allowSkip: safeBoolean(input.behavior?.allowSkip, true),
+      burySiblings: safeBoolean(input.behavior?.burySiblings, true),
     },
+
     ui: {
-      fontSize: Number(input.ui?.fontSize ?? 16),
-      animation: Boolean(input.ui?.animation ?? true),
-      soundEffect: Boolean(input.ui?.soundEffect ?? true),
-      darkMode: Boolean(input.ui?.darkMode ?? false),
+      fontSize: clamp(safeNumber(input.ui?.fontSize, 16), 12, 40),
+
+      animation: safeBoolean(input.ui?.animation, true),
+      soundEffect: safeBoolean(input.ui?.soundEffect, true),
+      darkMode: safeBoolean(input.ui?.darkMode, false),
     },
+
     notify: {
-      enableReminder: Boolean(input.notify?.enableReminder ?? true),
-      reminderHour: Number(input.notify?.reminderHour ?? 20),
+      enableReminder: safeBoolean(input.notify?.enableReminder, true),
+      reminderHour: clamp(safeNumber(input.notify?.reminderHour, 20), 0, 23),
     },
   };
 }
 
 //////////////////////////////////////////////////
-// SAFE USER EXTRACT
+// USER ID
 //////////////////////////////////////////////////
 function getUserId(req) {
   const userId = Number(req.user?.id);
@@ -130,25 +206,38 @@ exports.getSettings = async (req, res) => {
     const userId = getUserId(req);
     const weekStart = getWeekStart();
 
-    console.log("🔥 GET SETTINGS USER:", userId);
-
     const result = await pool
       .request()
       .input("userId", sql.Int, userId)
       .input("weekStart", sql.Date, weekStart).query(`
-        SELECT TOP 1 SettingsJson
+        SELECT TOP 1 *
         FROM UserSettings
         WHERE UserId = @userId
-          AND WeekStart = @weekStart
+        AND WeekStart = @weekStart
       `);
 
     const row = result.recordset[0];
 
-    const settings = row?.SettingsJson
-      ? sanitizeSettings(JSON.parse(row.SettingsJson))
-      : defaultSettings;
+    let settings = defaultSettings;
 
-    return res.json(settings);
+    if (row?.SettingsJson) {
+      try {
+        const parsed = JSON.parse(row.SettingsJson);
+
+        settings = sanitizeSettings(parsed);
+      } catch {
+        settings = defaultSettings;
+      }
+    }
+
+    return res.json({
+      id: row?.Id || null,
+      userId,
+      weekStart,
+      version: row?.Version || 1,
+      updatedAt: row?.UpdatedAt || null,
+      settings,
+    });
   } catch (err) {
     console.error("getSettings error:", err);
 
@@ -161,7 +250,7 @@ exports.getSettings = async (req, res) => {
 };
 
 //////////////////////////////////////////////////
-// SAVE SETTINGS (UPSERT CLEAN)
+// SAVE SETTINGS
 //////////////////////////////////////////////////
 exports.saveSettings = async (req, res) => {
   try {
@@ -170,9 +259,9 @@ exports.saveSettings = async (req, res) => {
     const userId = getUserId(req);
     const weekStart = getWeekStart();
 
-    const cleanSettings = sanitizeSettings(req.body);
+    const input = req.body?.settings || req.body;
 
-    console.log("🔥 SAVE SETTINGS USER:", userId);
+    const cleanSettings = sanitizeSettings(input);
 
     await pool
       .request()
@@ -185,7 +274,9 @@ exports.saveSettings = async (req, res) => {
       ).query(`
         MERGE UserSettings AS target
         USING (
-          SELECT @userId AS UserId, @weekStart AS WeekStart
+          SELECT
+            @userId AS UserId,
+            @weekStart AS WeekStart
         ) AS source
         ON target.UserId = source.UserId
         AND target.WeekStart = source.WeekStart
@@ -194,16 +285,29 @@ exports.saveSettings = async (req, res) => {
           UPDATE SET
             SettingsJson = @settingsJson,
             UpdatedAt = GETDATE(),
-            Version = ISNULL(Version, 1) + 1
+            Version = ISNULL(target.Version, 1) + 1
 
         WHEN NOT MATCHED THEN
-          INSERT (UserId, WeekStart, SettingsJson, Version)
-          VALUES (@userId, @weekStart, @settingsJson, 1);
+          INSERT (
+            UserId,
+            WeekStart,
+            SettingsJson,
+            Version,
+            UpdatedAt
+          )
+          VALUES (
+            @userId,
+            @weekStart,
+            @settingsJson,
+            1,
+            GETDATE()
+          );
       `);
 
     return res.json({
       success: true,
-      userId,
+      version: CURRENT_SETTINGS_VERSION,
+      message: "Settings saved successfully",
     });
   } catch (err) {
     console.error("saveSettings error:", err);
@@ -212,6 +316,8 @@ exports.saveSettings = async (req, res) => {
       return res.status(401).json({ message: "Invalid user" });
     }
 
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: err.message || "Server error",
+    });
   }
 };

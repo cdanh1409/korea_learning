@@ -1,9 +1,10 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
 
-// 🔥 GLOBAL CORS (KHÔNG CHECK GÌ HẾT)
+// 🔥 GLOBAL CORS
 app.use(
   cors({
     origin: "*",
@@ -13,6 +14,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// 🔥 STATIC IMAGE
+app.use("/images", express.static(path.join(__dirname, "../public/images")));
 
 // 🔥 LOG
 app.use((req, res, next) => {
@@ -29,10 +33,12 @@ app.use("/api/topics", require("./routes/topics.routes"));
 app.use("/api/stats", require("./routes/stats.routes"));
 app.use("/api/review", require("./routes/review.routes"));
 app.use("/api/settings", require("./routes/settings.routes"));
+app.use("/api/user", require("./routes/user.routes"));
 
 app.get("/", (req, res) => {
   res.json({ ok: true });
 });
+
 app.use((err, req, res, next) => {
   console.log("💥 ERROR:", err.message);
 
@@ -46,4 +52,5 @@ app.use((err, req, res, next) => {
 
   return res.status(500).json({ message: "Server error" });
 });
+
 module.exports = app;

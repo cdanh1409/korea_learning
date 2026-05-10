@@ -5,12 +5,25 @@ import { Outlet } from "react-router-dom";
 export default function MainLayout() {
   return (
     <div
-      className="flex h-screen w-full overflow-hidden text-[var(--text)]"
-      style={{ background: "var(--bg)" }}
+      className="
+        flex
+        h-screen
+        w-full
+        overflow-x-hidden
+        text-[var(--text)]
+      "
+      style={{
+        background: "var(--bg)",
+      }}
     >
       {/* SIDEBAR */}
       <aside
-        className="w-[260px] flex flex-col border-r shrink-0"
+        className="
+          w-[260px]
+          flex flex-col
+          border-r
+          shrink-0
+        "
         style={{
           background: "var(--card)",
           borderColor: "var(--border)",
@@ -20,7 +33,7 @@ export default function MainLayout() {
       </aside>
 
       {/* MAIN */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* HEADER */}
         <header
           className="h-[64px] shrink-0"
@@ -34,8 +47,15 @@ export default function MainLayout() {
 
         {/* CONTENT */}
         <main
-          className="flex-1 min-h-0 min-w-0 overflow-hidden p-6"
-          style={{ background: "var(--bg)" }}
+          className="
+            flex-1
+            overflow-y-auto
+            overflow-x-hidden
+            p-6
+          "
+          style={{
+            background: "var(--bg)",
+          }}
         >
           <Outlet />
         </main>

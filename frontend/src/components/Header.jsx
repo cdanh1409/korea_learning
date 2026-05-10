@@ -22,7 +22,7 @@ export default function Header() {
           boxShadow: "0 10px 30px var(--glow)",
         }}
       >
-        Học ngay
+        TOPIK AI
       </button>
 
       {/* RIGHT SIDE */}
@@ -52,7 +52,7 @@ export default function Header() {
             }}
           />
 
-          <span style={{ color: "var(--text)" }}>Danh</span>
+          <span style={{ color: "var(--text)" }}>Anh</span>
         </div>
       </div>
     </div>

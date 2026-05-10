@@ -15,6 +15,17 @@ const FILTERS = [
   { key: "advanced", label: "Cao cấp" },
 ];
 
+const topicImage = {
+  1: "family.png",
+  2: "school.png",
+  3: "food.png",
+  4: "greeting.png",
+  5: "job.png",
+  6: "travel.png",
+};
+
+const API_URL = "http://localhost:5000";
+
 export default function Learn() {
   const { settings } = useSettings();
 
@@ -40,16 +51,22 @@ export default function Learn() {
     total: 0,
   });
 
-  const safeWords = useMemo(() => (Array.isArray(words) ? words : []), [words]);
+  // ================= SAFE WORDS =================
+  const safeWords = useMemo(() => {
+    return Array.isArray(words) ? words : [];
+  }, [words]);
 
   const current = safeWords[index] ?? null;
+
   const finished = safeWords.length > 0 && index >= safeWords.length;
 
   // ================= LOAD TOPICS =================
   useEffect(() => {
     api
       .get("/topics")
-      .then((res) => setTopics(res.data || []))
+      .then((res) => {
+        setTopics(res.data || []);
+      })
       .catch(console.log);
   }, []);
 
@@ -59,14 +76,18 @@ export default function Learn() {
 
     api
       .get("/vocabularies", {
-        params: { topicId: selectedTopic },
+        params: {
+          topicId: selectedTopic,
+        },
       })
       .then((res) => {
         const data = res.data || [];
-
+        console.log("VOCAB API:", res.data);
         setWords(data);
+
         setIndex(0);
         setFlipped(false);
+
         setIsLearning(true);
 
         setStats({
@@ -109,17 +130,21 @@ export default function Learn() {
   useEffect(() => {
     if (prevIdRef.current !== current?.Id) {
       setFlipped(false);
+
       prevIdRef.current = current?.Id;
     }
   }, [current?.Id]);
 
   // ================= AUTO SPEAK =================
   useEffect(() => {
-    if (!current || !flipped || !settings?.autoPlayAudio) return;
+    if (!current || !flipped || !settings?.autoPlayAudio) {
+      return;
+    }
 
     window.speechSynthesis.cancel();
 
     const utter = new SpeechSynthesisUtterance(current.Word || "");
+
     utter.lang = "ko-KR";
 
     speechRef.current = utter;
@@ -133,7 +158,9 @@ export default function Learn() {
 
   // ================= AUTO FLIP =================
   useEffect(() => {
-    if (!settings?.autoFlip || flipped || !current || finished) return;
+    if (!settings?.autoFlip || flipped || !current || finished) {
+      return;
+    }
 
     flipTimerRef.current = setTimeout(() => {
       setFlipped(true);
@@ -143,22 +170,30 @@ export default function Learn() {
   }, [flipped, current?.Id, settings, finished]);
 
   // ================= ACTIONS =================
-  const nextWord = () => setIndex((p) => p + 1);
+  const nextWord = () => {
+    setIndex((p) => p + 1);
+  };
 
   const handleSelectTopic = (id) => {
-    // FIX: reset ngay tại click → bỏ useEffect anti-pattern
     setSelectedTopic(id);
+
     setIndex(0);
     setFlipped(false);
+
     setIsLearning(false);
   };
 
   const handleBack = () => {
     setSelectedTopic(null);
+
     setIsLearning(false);
+
     setWords([]);
+
     setIndex(0);
+
     setFlipped(false);
+
     window.speechSynthesis?.cancel();
   };
 
@@ -178,14 +213,16 @@ export default function Learn() {
       }));
 
       nextWord();
-    } catch (e) {
-      console.log(e);
+    } catch (err) {
+      console.log(err);
     }
   };
 
   // ================= STATS =================
   const learned = stats.total;
+
   const left = Math.max(safeWords.length - index, 0);
+
   const progress = safeWords.length
     ? Math.round((learned / safeWords.length) * 100)
     : 0;
@@ -195,6 +232,7 @@ export default function Learn() {
     : 0;
 
   const topic = topics.find((t) => t.Id === selectedTopic);
+
   const topicName = topic?.Name || "—";
 
   const levelText =
@@ -205,8 +243,14 @@ export default function Learn() {
         : "—";
 
   const progressData = [
-    { name: "done", value: learned },
-    { name: "left", value: left },
+    {
+      name: "done",
+      value: learned,
+    },
+    {
+      name: "left",
+      value: left,
+    },
   ];
 
   // ================= FINISH =================
@@ -215,12 +259,14 @@ export default function Learn() {
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] text-[var(--text)] px-4">
         <div className="w-full max-w-md p-6 rounded-2xl border bg-[var(--card)] text-center space-y-5">
           <div className="text-5xl">🎉</div>
+
           <h1 className="text-2xl font-bold">Hoàn thành bài học</h1>
 
           <div className="grid grid-cols-4 gap-2 text-xs">
             {["easy", "normal", "hard", "again"].map((k) => (
               <div key={k} className="p-3 rounded-xl bg-black/5">
                 <p className="text-lg font-bold">{stats[k]}</p>
+
                 <p>{k}</p>
               </div>
             ))}
@@ -229,7 +275,9 @@ export default function Learn() {
           <button
             onClick={handleBack}
             className="w-full py-2 rounded-xl text-white"
-            style={{ background: "var(--primary)" }}
+            style={{
+              background: "var(--primary)",
+            }}
           >
             Chọn chủ đề khác
           </button>
@@ -239,20 +287,121 @@ export default function Learn() {
   }
 
   return (
-    <div className="min-h-screen p-5 bg-[var(--bg)] text-[var(--text)]">
+    <div className="w-full min-h-full p-5 bg-[var(--bg)] text-[var(--text)]">
+      {" "}
       <div className="max-w-5xl mx-auto space-y-4">
-        {/* FILTER */}
+        {/* ================= HERO ================= */}
+        {!isLearning && (
+          <div
+            className="
+              relative overflow-hidden
+              rounded-3xl border
+              p-4 md:p-5
+            "
+            style={{
+              background:
+                "linear-gradient(135deg, var(--card) 0%, var(--card2) 100%)",
+
+              borderColor: "var(--border)",
+            }}
+          >
+            {/* GLOW */}
+            <div
+              className="
+                absolute -top-24 -right-24
+                w-72 h-72 rounded-full
+                blur-3xl opacity-20
+              "
+              style={{
+                background: "var(--primary)",
+              }}
+            />
+
+            <div
+              className="
+                relative z-10
+                flex flex-col lg:flex-row
+                items-center justify-between
+                gap-6
+              "
+            >
+              {/* LEFT */}
+              <div className="max-w-xl">
+                <p
+                  className="
+                    text-xs font-bold uppercase
+                    tracking-[0.25em]
+                  "
+                  style={{
+                    color: "var(--primary)",
+                  }}
+                >
+                  Bắt đầu học
+                </p>
+
+                <h1
+                  className="
+                    mt-3
+                    text-3xl md:text-4xl
+                    font-black italic
+                    leading-tight
+                  "
+                >
+                  Học từ vựng thông minh với AI
+                </h1>
+
+                <p
+                  className="
+                    mt-3
+                    text-sm md:text-base
+                    leading-7
+                    font-medium
+                    text-[var(--muted)]
+                  "
+                >
+                  AI sẽ giúp bạn học từ vựng thông minh hơn, ghi nhớ lâu hơn và
+                  đúng trọng tâm TOPIK!
+                </p>
+              </div>
+
+              {/* IMAGE */}
+              <div className="flex justify-center">
+                <img
+                  src={`${API_URL}/images/learn.png`}
+                  alt="Learn"
+                  className="
+                    w-[160px] md:w-[220px]
+                    object-contain
+                    drop-shadow-2xl
+                    select-none
+                    pointer-events-none
+                  "
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= FILTER ================= */}
         {!isLearning && (
           <div className="flex flex-wrap gap-2">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className="px-3 py-1 text-sm rounded-full border"
+                className="
+                  px-4 py-2
+                  text-sm font-medium
+                  rounded-full border
+                  transition-all
+                "
                 style={{
                   background:
                     filter === f.key ? "var(--primary)" : "var(--card)",
+
                   color: filter === f.key ? "#fff" : "var(--text)",
+
+                  borderColor: "var(--border)",
                 }}
               >
                 {f.label}
@@ -261,89 +410,205 @@ export default function Learn() {
           </div>
         )}
 
-        {/* TOPICS */}
+        {/* ================= TOPICS ================= */}
         {!isLearning && (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTopics.map((t) => (
-              <div
-                key={t.Id}
-                onClick={() => handleSelectTopic(t.Id)}
-                className="p-3 rounded-xl border bg-[var(--card)] cursor-pointer"
-              >
-                <h3 className="font-semibold text-sm">{t.Name}</h3>
-                <p className="text-xs opacity-70">Level {t.Level}</p>
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredTopics.map((t) => {
+              const imageUrl = `${API_URL}/images/${topicImage[t.Id]}`;
+
+              return (
+                <div
+                  key={t.Id}
+                  onClick={() => handleSelectTopic(t.Id)}
+                  className="
+                    group
+                    relative overflow-hidden
+                    rounded-3xl border
+                    bg-[var(--card)]
+                    cursor-pointer
+                    transition-all duration-300
+                    hover:-translate-y-1
+                    hover:shadow-2xl
+                  "
+                  style={{
+                    borderColor: "var(--border)",
+                  }}
+                >
+                  {/* IMAGE */}
+                  <div className="h-[190px] overflow-hidden">
+                    <img
+                      src={imageUrl}
+                      alt={t.Name}
+                      className="
+                        w-full h-full object-cover
+                        transition-transform duration-500
+                        group-hover:scale-110
+                      "
+                      // onError={(e) => {
+                      //   e.target.src = "/no-image.png";
+                      // }}
+                    />
+                  </div>
+
+                  {/* DARK OVERLAY */}
+                  <div
+                    className="
+                      absolute inset-0
+                      bg-gradient-to-t
+                      from-black/80
+                      via-black/10
+                      to-transparent
+                    "
+                  />
+
+                  {/* CONTENT */}
+                  <div className="absolute bottom-0 left-0 p-5 z-10 text-white">
+                    <h3 className="font-black text-2xl drop-shadow-lg">
+                      {t.Name}
+                    </h3>
+
+                    <p className="text-sm opacity-90 mt-1">
+                      TOPIK Level {t.Level}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* LEARNING */}
-        {isLearning && current && (
+        {/* ================= LEARNING ================= */}
+        {isLearning && safeWords.length > 0 && current && (
           <div className="grid lg:grid-cols-3 gap-4">
             {/* CARD */}
             <div className="lg:col-span-2 flex flex-col items-center">
               <div
                 onClick={() => setFlipped(!flipped)}
-                className="w-full max-w-md h-[300px]"
+                className="
+                  w-full max-w-md
+                  h-[300px]
+                  cursor-pointer
+                "
               >
                 <div
-                  className="relative w-full h-full transition-transform duration-500"
+                  className="
+                    relative w-full h-full
+                    transition-transform duration-500
+                  "
                   style={{
                     transformStyle: "preserve-3d",
+
                     transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
                   }}
                 >
+                  {/* FRONT */}
                   <div
-                    className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--card)]"
-                    style={{ backfaceVisibility: "hidden" }}
+                    className="
+                    absolute inset-0
+                    flex flex-col items-center justify-center gap-3
+                    rounded-3xl
+                    bg-[var(--card)]
+                    border
+                    p-4
+                  "
+                    style={{
+                      borderColor: "var(--border)",
+                      backfaceVisibility: "hidden",
+                    }}
                   >
-                    <h1 className="text-3xl font-bold">{current.Word}</h1>
+                    <div className="text-center">
+                      <h1 className="text-3xl font-black">{current.Word}</h1>
+
+                      {current.Pronunciation && (
+                        <p className="text-sm opacity-60 mt-1">
+                          ({current.Pronunciation})
+                        </p>
+                      )}
+                    </div>
                   </div>
 
+                  {/* BACK */}
                   <div
-                    className="absolute inset-0 flex items-center justify-center rounded-2xl text-white"
+                    className="
+                    absolute inset-0
+                    flex items-center justify-center
+                    rounded-3xl
+                    text-white
+                    p-6 text-center
+                  "
                     style={{
                       background: "var(--primary)",
                       transform: "rotateY(180deg)",
                       backfaceVisibility: "hidden",
                     }}
                   >
-                    <h1 className="text-3xl font-bold">{current.Meaning}</h1>
+                    <h1 className="text-3xl font-black">{current.Meaning}</h1>
                   </div>
                 </div>
               </div>
 
-              {/* SRS */}
-              <div className="w-full max-w-md mt-4 grid grid-cols-4 gap-2">
+              {/* BUTTONS */}
+              <div className="w-full max-w-md mt-5 grid grid-cols-4 gap-2">
                 <button
                   onClick={() => handleSRS("again")}
-                  className="bg-red-500 text-white py-2 rounded-lg"
+                  className="bg-red-500 text-white py-3 rounded-xl font-semibold"
                 >
                   Again
                 </button>
+
                 <button
                   onClick={() => handleSRS("hard")}
-                  className="bg-orange-500 text-white py-2 rounded-lg"
+                  className="bg-orange-500 text-white py-3 rounded-xl font-semibold"
                 >
                   Hard
                 </button>
+
                 <button
                   onClick={() => handleSRS("normal")}
-                  className="bg-yellow-500 text-white py-2 rounded-lg"
+                  className="bg-yellow-500 text-white py-3 rounded-xl font-semibold"
                 >
                   Good
                 </button>
+
                 <button
                   onClick={() => handleSRS("easy")}
-                  className="bg-green-500 text-white py-2 rounded-lg"
+                  className="bg-green-500 text-white py-3 rounded-xl font-semibold"
                 >
                   Easy
                 </button>
               </div>
-            </div>
+              {/* EXAMPLE CARD */}
+              {isLearning && current?.ExampleSentence && (
+                <div
+                  className="
+                  w-full max-w-md mt-4
+                  p-4 rounded-2xl border
+                  bg-[var(--card)]
+                  space-y-2
+                "
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <p className="text-xs opacity-60">Ví dụ</p>
 
+                  <p className="text-base font-semibold">
+                    {current.ExampleSentence}
+                  </p>
+
+                  <p className="text-sm opacity-70">{current.ExampleMeaning}</p>
+                </div>
+              )}
+            </div>
             {/* STATS */}
-            <div className="p-4 rounded-xl bg-[var(--card)] border text-sm space-y-3">
+            <div
+              className="
+                p-5 rounded-2xl border
+                bg-[var(--card)]
+                text-sm space-y-3
+              "
+              style={{
+                borderColor: "var(--border)",
+              }}
+            >
               <ResponsiveContainer width="100%" height={170}>
                 <PieChart>
                   <Pie
@@ -370,14 +635,14 @@ export default function Learn() {
               </ResponsiveContainer>
 
               <div className="space-y-1 text-sm">
-                {/* TOPIC */}
                 <p className="text-xs opacity-60">Chủ đề</p>
+
                 <p className="font-semibold text-base">{topicName}</p>
 
                 <p className="text-xs opacity-60 mt-2">Cấp độ</p>
+
                 <p className="font-medium">{levelText}</p>
 
-                {/* STATS */}
                 <div className="mt-3 space-y-1">
                   <p>
                     <span className="opacity-60">Đã học:</span>{" "}

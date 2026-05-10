@@ -58,6 +58,8 @@ exports.getAllVocabulary = async (req, res) => {
           v.AudioUrl,
           v.Level,
           v.TopicId,
+          v.ExampleSentence,
+          v.ExampleMeaning,
 
           ISNULL(p.Repetition, 0) AS Repetition,
           ISNULL(p.IntervalDays, 0) AS IntervalDays,

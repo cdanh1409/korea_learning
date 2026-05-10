@@ -16,7 +16,7 @@ const shuffleArray = (arr = []) => {
 export default function Review() {
   const [topics, setTopics] = useState([]);
   const [words, setWords] = useState([]);
-
+  const [resultImage, setResultImage] = useState(null);
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -41,6 +41,7 @@ export default function Review() {
 
   const timeoutRef = useRef(null);
   const lockRef = useRef(false);
+  const [showResult, setShowResult] = useState(false);
 
   const currentWord = words[currentIndex];
 
@@ -150,9 +151,11 @@ export default function Review() {
     timeoutRef.current = setTimeout(() => {
       setCurrentIndex((p) => p + 1);
       setSelectedAnswer(null);
-      setAnswerResult(null); // reset effect màu
+      setAnswerResult(null);
+      setShowResult(false);
+      setResultImage(null);
       lockRef.current = false;
-    }, 450); // ⬅ tăng nhẹ để thấy effect
+    }, 900);
   };
 
   const handleSelectAnswer = (choice) => {
@@ -163,6 +166,14 @@ export default function Review() {
     setSelectedAnswer(choice.Id);
     setAnswerResult(correct ? "easy" : "again");
 
+    setResultImage(
+      correct
+        ? "http://localhost:5000/images/correct.png"
+        : "http://localhost:5000/images/wrong.png",
+    );
+
+    setShowResult(true);
+
     handleAnswer(correct ? "easy" : "again");
   };
 
@@ -171,6 +182,9 @@ export default function Review() {
 
     setSelectedAnswer(null);
     setAnswerResult("again");
+
+    setResultImage("http://localhost:5000/images/skip.png");
+    setShowResult(true);
 
     handleAnswer("skip");
   };
@@ -438,7 +452,7 @@ export default function Review() {
                   borderColor: "var(--border)",
                 }}
               >
-                ⏭ Skip
+                Skip
               </button>
             </div>
           </div>
@@ -448,6 +462,23 @@ export default function Review() {
             <p>Đúng: {stats.easy}</p>
             <p>Sai: {stats.again}</p>
             <p>Bỏ qua: {stats.skip}</p>
+
+            {/* ================= RESULT IMAGE ================= */}
+            {showResult && resultImage && (
+              <div className="mt-4">
+                <img
+                  src={resultImage}
+                  className="
+    w-full max-h-52
+    object-contain
+    rounded-2xl
+    shadow-lg
+    transition-all duration-300
+    hover:scale-105
+  "
+                />
+              </div>
+            )}
           </Card>
         </div>
       )}

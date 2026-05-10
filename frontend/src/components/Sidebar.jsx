@@ -8,7 +8,11 @@ import {
   Settings,
   LogOut,
 } from "lucide-react";
+
 import { useNavigate, useLocation } from "react-router-dom";
+import { useContext } from "react";
+
+import { ThemeContext } from "../context/theme/ThemeContext";
 
 const menu = [
   { icon: Home, label: "Trang chủ", path: "/" },
@@ -23,6 +27,8 @@ const menu = [
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { darkMode } = useContext(ThemeContext);
 
   const handleLogout = () => {
     if (window.confirm("Bạn có chắc muốn đăng xuất không?")) {
@@ -39,10 +45,26 @@ export default function Sidebar() {
         borderRight: "1px solid var(--border)",
       }}
     >
-      {/* LOGO */}
-      <h2 className="text-xl font-bold mb-6 text-[var(--primary)]">TOPIK AI</h2>
+      {/* ================= LOGO ================= */}
+      <div className="mb-6 flex items-center justify-center">
+        <img
+          src="http://localhost:5000/images/logo.png"
+          alt="TOPIK AI"
+          className="
+            w-40 object-contain
+            transition-all duration-300
+            hover:scale-105 hover:-translate-y-0.5
+            select-none pointer-events-none
+          "
+          style={{
+            filter: darkMode
+              ? "drop-shadow(0 0 14px rgba(99,102,241,0.35)) brightness(1.08)"
+              : "drop-shadow(0 0 10px rgba(99,102,241,0.18))",
+          }}
+        />
+      </div>
 
-      {/* MENU */}
+      {/* ================= MENU ================= */}
       <div className="space-y-1 flex-1">
         {menu.map((item, index) => {
           const Icon = item.icon;
@@ -63,22 +85,29 @@ export default function Sidebar() {
                 background: isActive ? "var(--card2)" : "transparent",
               }}
             >
-              {/* hover glow */}
+              {/* Hover Glow */}
               <div
-                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition"
+                className="
+                  absolute inset-0
+                  opacity-0 group-hover:opacity-100
+                  transition-all duration-300
+                "
                 style={{
                   background: "var(--primary)",
                   opacity: 0.06,
                 }}
               />
 
+              {/* Icon */}
               <Icon
                 size={18}
+                className="relative z-10"
                 style={{
                   color: isActive ? "var(--primary)" : "var(--muted)",
                 }}
               />
 
+              {/* Label */}
               <span
                 className="text-sm relative z-10"
                 style={{
@@ -88,12 +117,13 @@ export default function Sidebar() {
                 {item.label}
               </span>
 
+              {/* Active Indicator */}
               {isActive && (
                 <div
                   className="ml-auto w-1.5 h-6 rounded-full relative z-10"
                   style={{
                     background: "var(--primary)",
-                    boxShadow: "0 0 15px var(--glow)",
+                    boxShadow: "0 0 15px rgba(99,102,241,0.5)",
                   }}
                 />
               )}
@@ -115,16 +145,24 @@ export default function Sidebar() {
             hover:bg-red-500/10
           "
         >
-          {/* hover red glow */}
+          {/* Hover Red Glow */}
           <div
-            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition"
+            className="
+              absolute inset-0
+              opacity-0 group-hover:opacity-100
+              transition-all duration-300
+            "
             style={{
               background: "#ef4444",
               opacity: 0.08,
             }}
           />
 
-          <LogOut size={18} style={{ color: "#ef4444" }} />
+          <LogOut
+            size={18}
+            className="relative z-10"
+            style={{ color: "#ef4444" }}
+          />
 
           <span className="text-sm relative z-10" style={{ color: "#ef4444" }}>
             Đăng xuất
