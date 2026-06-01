@@ -147,7 +147,7 @@ exports.changePassword = async (req, res) => {
     if (!isValidPassword(newPassword)) {
       return res.status(400).json({
         message:
-          "Password must contain uppercase, lowercase, number and be at least 8 characters",
+          "Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số.",
       });
     }
 

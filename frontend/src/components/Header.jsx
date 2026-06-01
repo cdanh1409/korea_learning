@@ -1,19 +1,46 @@
 import { Moon, Sun } from "lucide-react";
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react";
 import { ThemeContext } from "../context/theme/ThemeContext";
+import api from "../utils/api";
 
 export default function Header() {
   const { darkMode, toggleTheme } = useContext(ThemeContext);
 
+  const [user, setUser] = useState({
+    fullName: "",
+    avatarUrl: "",
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data } = await api.get("/user/profile");
+
+        setUser({
+          fullName: data?.fullName || "",
+          avatarUrl: data?.avatarUrl || "",
+        });
+      } catch (error) {
+        console.error("Profile load error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
   return (
-    <div
+    <header
       className="flex items-center px-6 py-4"
       style={{
         background: "var(--card)",
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* LEFT BUTTON */}
+      {/* Logo */}
       <button
         className="px-5 py-2 rounded-xl font-medium"
         style={{
@@ -25,9 +52,9 @@ export default function Header() {
         TOPIK AI
       </button>
 
-      {/* RIGHT SIDE */}
+      {/* Right */}
       <div className="ml-auto flex items-center gap-3">
-        {/* THEME TOGGLE */}
+        {/* Theme */}
         <button
           onClick={toggleTheme}
           className="w-10 h-10 flex items-center justify-center rounded-xl transition hover:scale-105"
@@ -43,18 +70,38 @@ export default function Header() {
           )}
         </button>
 
-        {/* AVATAR */}
-        <div className="flex items-center gap-2 cursor-pointer">
-          <div
-            className="w-9 h-9 rounded-full"
-            style={{
-              background: "linear-gradient(135deg, #a78bfa, #f472b6)",
-            }}
-          />
+        {/* User */}
+        <div className="flex items-center gap-2">
+          {user.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user.fullName}
+              className="w-9 h-9 rounded-full object-cover border"
+              style={{
+                borderColor: "var(--border)",
+              }}
+            />
+          ) : (
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold"
+              style={{
+                background: "linear-gradient(135deg,#8b5cf6,#ec4899)",
+              }}
+            >
+              {user.fullName?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+          )}
 
-          <span style={{ color: "var(--text)" }}>Anh</span>
+          <span
+            className="font-medium"
+            style={{
+              color: "var(--text)",
+            }}
+          >
+            {loading ? "Loading..." : user.fullName || "User"}
+          </span>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

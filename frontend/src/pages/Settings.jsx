@@ -3,123 +3,26 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Card from "../components/common/Card";
 import useTheme from "../hooks/useTheme";
 import api from "../utils/api";
+import { Moon, Sun } from "lucide-react";
 
-/* ================= DEFAULT ================= */
 const defaultSettings = {
   profile: {
     fullName: "",
     email: "",
     avatarUrl: "",
   },
-
   security: {
     oldPassword: "",
     newPassword: "",
     confirmPassword: "",
   },
-
-  learning: {
-    newCardsPerDay: 20,
-    learningSteps: "1,10",
-    graduatingInterval: 1,
-    easyInterval: 4,
-  },
-
-  review: {
-    maxReviewsPerDay: 100,
-    easyBonus: 1.3,
-    intervalModifier: 1.0,
-  },
-
-  lapse: {
-    relearningSteps: "1,10",
-    lapseIntervalMultiplier: 0.5,
-    minimumInterval: 1,
-  },
-
-  behavior: {
-    showAnswerTimer: true,
-    autoFlip: false,
-    allowSkip: true,
-    burySiblings: true,
-  },
-
-  ui: {
-    fontSize: 16,
-    animation: true,
-    soundEffect: true,
-  },
-
-  notify: {
-    enableReminder: true,
-    reminderHour: 20,
-  },
 };
-
-/* ================= UTIL ================= */
-const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
-
-function deepMerge(target, source) {
-  const output = Array.isArray(target) ? [...target] : { ...target };
-  if (!source) return output;
-
-  for (const key in source) {
-    const sv = source[key];
-    const tv = output[key];
-
-    if (
-      sv &&
-      typeof sv === "object" &&
-      !Array.isArray(sv) &&
-      typeof tv === "object" &&
-      tv !== null
-    ) {
-      output[key] = deepMerge(tv, sv);
-    } else {
-      output[key] = sv;
-    }
-  }
-
-  return output;
-}
-
-function getInitialSettings() {
-  try {
-    const cached = localStorage.getItem("settings");
-    if (!cached) return deepClone(defaultSettings);
-
-    return deepMerge(deepClone(defaultSettings), JSON.parse(cached));
-  } catch {
-    return deepClone(defaultSettings);
-  }
-}
-
-/* ================= UI ================= */
-function Toggle({ label, value, onChange }) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm">{label}</span>
-
-      <button
-        onClick={() => onChange(!value)}
-        className={`w-12 h-6 flex items-center rounded-full p-1 transition ${
-          value ? "bg-green-500" : "bg-gray-400"
-        }`}
-      >
-        <div
-          className={`w-4 h-4 bg-white rounded-full transition ${
-            value ? "ml-auto" : ""
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
 
 function Input({ label, value, onChange, type = "text", disabled }) {
   return (
     <div className="space-y-1">
       <p className="text-xs opacity-70">{label}</p>
+
       <input
         type={type}
         value={value ?? ""}
@@ -131,89 +34,79 @@ function Input({ label, value, onChange, type = "text", disabled }) {
   );
 }
 
-/* ================= MAIN ================= */
 export default function Settings() {
   const { darkMode, toggleTheme } = useTheme();
 
   const [tab, setTab] = useState("profile");
-  const [settings, setSettings] = useState(() => getInitialSettings());
-  const [msg, setMsg] = useState("");
+  const [settings, setSettings] = useState(defaultSettings);
+
   const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
 
   const [avatarFile, setAvatarFile] = useState(null);
-  const [avatarPreview, setAvatarPreview] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState("/default-avatar.png");
 
   const tabs = useMemo(
     () => [
       { key: "profile", label: "Hồ sơ" },
       { key: "security", label: "Bảo mật" },
-      { key: "learning", label: "Học tập" },
-      { key: "review", label: "Ôn tập" },
-      { key: "lapse", label: "Quên bài" },
-      { key: "behavior", label: "Hành vi" },
-      { key: "ui", label: "Giao diện" },
-      { key: "notify", label: "Thông báo" },
+      { key: "appearance", label: "Giao diện" },
     ],
     [],
   );
 
-  /* ================= LOAD ================= */
   useEffect(() => {
     let ignore = false;
 
-    const load = async () => {
+    const loadProfile = async () => {
       try {
-        const [settingsRes, profileRes] = await Promise.all([
-          api.get("/settings"),
-          api.get("/user/profile"),
-        ]);
+        const res = await api.get("/user/profile");
 
         if (ignore) return;
 
-        const merged = deepMerge(deepClone(defaultSettings), {
-          ...settingsRes.data,
-          profile: profileRes.data || {},
-        });
+        const profile = res.data || {};
 
-        setSettings(merged);
-        localStorage.setItem("settings", JSON.stringify(merged));
+        setSettings((prev) => ({
+          ...prev,
+          profile,
+        }));
 
-        const avatar = merged.profile?.avatarUrl;
-        setAvatarPreview(avatar || "/default-avatar.png");
+        setAvatarPreview(profile.avatarUrl || "/default-avatar.png");
       } catch {
-        setMsg("❌ Không tải được dữ liệu");
+        setMsg("❌ Không tải được hồ sơ");
       }
     };
 
-    load();
+    loadProfile();
 
     return () => {
       ignore = true;
-      if (avatarPreview?.startsWith("blob:")) {
-        URL.revokeObjectURL(avatarPreview);
-      }
     };
   }, []);
 
-  /* ================= UPDATE ================= */
-  const update = useCallback((group, key, value) => {
-    setSettings((prev) => {
-      const updated = {
-        ...prev,
-        [group]: {
-          ...(prev[group] || {}),
-          [key]: value,
-        },
-      };
+  /* ================= AUTO HIDE MESSAGE ================= */
+  useEffect(() => {
+    if (!msg.startsWith("✅")) return;
 
-      localStorage.setItem("settings", JSON.stringify(updated));
-      return updated;
-    });
+    const timer = setTimeout(() => {
+      setMsg("");
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [msg]);
+  const update = useCallback((group, key, value) => {
+    setSettings((prev) => ({
+      ...prev,
+      [group]: {
+        ...prev[group],
+        [key]: value,
+      },
+    }));
   }, []);
 
-  /* ================= AVATAR ================= */
   const onAvatarChange = (e) => {
     const file = e.target.files?.[0];
+
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -222,21 +115,16 @@ export default function Settings() {
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setMsg("❌ Ảnh quá lớn (max 5MB)");
+      setMsg("❌ Ảnh vượt quá 5MB");
       return;
     }
 
     setAvatarFile(file);
 
-    const url = URL.createObjectURL(file);
-
-    setAvatarPreview((old) => {
-      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
-      return url;
-    });
+    const preview = URL.createObjectURL(file);
+    setAvatarPreview(preview);
   };
 
-  /* ================= SAVE ================= */
   const save = async () => {
     if (loading) return;
 
@@ -253,12 +141,17 @@ export default function Settings() {
 
     try {
       const formData = new FormData();
+
       formData.append("fullName", settings.profile.fullName || "");
 
-      if (avatarFile) formData.append("avatar", avatarFile);
+      if (avatarFile) {
+        formData.append("avatar", avatarFile);
+      }
 
       await api.put("/user/profile", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
       if (settings.security.newPassword) {
@@ -268,68 +161,29 @@ export default function Settings() {
         });
       }
 
-      const clean = deepClone(settings);
-      clean.security = {
-        oldPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      };
+      setSettings((prev) => ({
+        ...prev,
+        security: {
+          oldPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        },
+      }));
 
-      setSettings(clean);
-      localStorage.setItem("settings", JSON.stringify(clean));
+      setAvatarFile(null);
 
       setMsg("✅ Lưu thành công");
     } catch (err) {
-      setMsg(err.response?.data?.message || "❌ Lỗi khi lưu");
+      console.error(err);
+
+      setMsg(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "❌ Lỗi khi lưu",
+      );
     } finally {
       setLoading(false);
     }
-  };
-
-  /* ================= RESET ================= */
-  const reset = () => {
-    const fresh = deepClone(defaultSettings);
-
-    setSettings(fresh);
-    localStorage.setItem("settings", JSON.stringify(fresh));
-
-    setAvatarFile(null);
-    setAvatarPreview("/default-avatar.png");
-    setMsg("♻ Đã reset");
-  };
-
-  const renderField = (group, key, value) => {
-    if (typeof value === "boolean") {
-      return (
-        <Toggle
-          key={key}
-          label={key}
-          value={value}
-          onChange={(v) => update(group, key, v)}
-        />
-      );
-    }
-
-    if (typeof value === "number") {
-      return (
-        <Input
-          key={key}
-          label={key}
-          type="number"
-          value={value}
-          onChange={(v) => update(group, key, Number(v))}
-        />
-      );
-    }
-
-    return (
-      <Input
-        key={key}
-        label={key}
-        value={value}
-        onChange={(v) => update(group, key, v)}
-      />
-    );
   };
 
   const passwordError =
@@ -338,7 +192,6 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen flex bg-[var(--bg)] text-[var(--text)]">
-      {/* SIDEBAR */}
       <aside className="w-64 hidden md:flex flex-col border-r p-4 gap-2">
         <h1 className="text-2xl font-bold mb-4">Cài đặt</h1>
 
@@ -346,31 +199,30 @@ export default function Settings() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-xl text-left ${
-              tab === t.key ? "bg-gray-200 dark:bg-gray-700" : ""
-            }`}
+            className="px-4 py-3 rounded-xl text-left transition-all"
+            style={{
+              background: tab === t.key ? "var(--card2)" : "transparent",
+              color: tab === t.key ? "var(--primary)" : "var(--text)",
+              fontWeight: tab === t.key ? 700 : 500,
+            }}
           >
             {t.label}
           </button>
         ))}
-
-        <button className="mt-auto py-2 rounded-xl" onClick={toggleTheme}>
-          {darkMode ? "🌙 Dark" : "☀️ Light"}
-        </button>
       </aside>
 
-      {/* MAIN */}
       <main className="flex-1 p-6 space-y-6">
         {msg && <div className="p-3 rounded-xl">{msg}</div>}
 
         {tab === "profile" && (
           <Card className="p-5 space-y-4">
             <img
-              src={avatarPreview || "/default-avatar.png"}
+              src={avatarPreview}
+              alt="Avatar"
               className="w-28 h-28 rounded-full object-cover"
             />
 
-            <input type="file" onChange={onAvatarChange} />
+            <input type="file" accept="image/*" onChange={onAvatarChange} />
 
             <Input
               label="Họ tên"
@@ -399,7 +251,7 @@ export default function Settings() {
             />
 
             <Input
-              label="Xác nhận"
+              label="Xác nhận mật khẩu"
               type="password"
               value={settings.security.confirmPassword}
               onChange={(v) => update("security", "confirmPassword", v)}
@@ -410,43 +262,116 @@ export default function Settings() {
             )}
           </Card>
         )}
+        {tab === "appearance" && (
+          <Card className="p-5 space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold">Giao diện ứng dụng</h2>
 
-        {["learning", "review", "lapse", "behavior", "ui", "notify"].includes(
-          tab,
-        ) && (
-          <Card className="p-5 space-y-3">
-            {Object.entries(settings[tab]).map(([k, v]) =>
-              renderField(tab, k, v),
-            )}
+              <p className="opacity-70 text-sm mt-1">
+                Tùy chỉnh chế độ hiển thị của hệ thống.
+              </p>
+            </div>
+
+            <div
+              className="
+        flex items-center justify-between
+        p-5 rounded-2xl border
+      "
+              style={{
+                background: "var(--card2)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="
+            w-12 h-12 rounded-xl
+            flex items-center justify-center
+          "
+                  style={{
+                    background: "var(--card)",
+                  }}
+                >
+                  {darkMode ? <Moon size={22} /> : <Sun size={22} />}
+                </div>
+
+                <div>
+                  <p className="font-semibold">
+                    {darkMode ? "Dark Mode" : "Light Mode"}
+                  </p>
+
+                  <p className="text-sm opacity-70">
+                    {darkMode
+                      ? "Đang sử dụng giao diện tối"
+                      : "Đang sử dụng giao diện sáng"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={toggleTheme}
+                className={`
+          relative w-16 h-9 rounded-full transition-all
+          ${darkMode ? "bg-indigo-600" : "bg-slate-300"}
+        `}
+              >
+                <span
+                  className={`
+            absolute top-1 left-1
+            w-7 h-7 rounded-full bg-white
+            transition-transform
+            ${darkMode ? "translate-x-7" : ""}
+          `}
+                />
+              </button>
+            </div>
+
+            <div
+              className="p-5 rounded-2xl border"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <p className="font-semibold mb-3">Xem trước giao diện</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div
+                  className="p-4 rounded-xl border"
+                  style={{
+                    background: "var(--card2)",
+                    borderColor: "var(--border)",
+                  }}
+                >
+                  Card mẫu
+                </div>
+
+                <div
+                  className="p-4 rounded-xl border"
+                  style={{
+                    background: "var(--card2)",
+                    borderColor: "var(--border)",
+                  }}
+                >
+                  Nội dung mẫu
+                </div>
+              </div>
+            </div>
           </Card>
         )}
-
-        {/* ACTION */}
-        <div className="sticky bottom-0 flex gap-3 pt-4 bg-[var(--bg)]/80 backdrop-blur-md">
-          {/* SAVE */}
+        <div className="sticky bottom-0 pt-4 bg-[var(--bg)]/80 backdrop-blur-md">
           <button
             onClick={save}
             disabled={loading}
             className="w-full py-3 rounded-xl font-semibold text-white
-               bg-gradient-to-r from-indigo-500 to-purple-600
-               shadow-lg shadow-indigo-500/30
-               hover:scale-[1.02] active:scale-[0.98]
-               transition disabled:opacity-60 disabled:cursor-not-allowed"
+              bg-gradient-to-r from-indigo-500 to-purple-600
+              shadow-lg shadow-indigo-500/30
+              hover:scale-[1.02]
+              active:scale-[0.98]
+              transition
+              disabled:opacity-60"
           >
             {loading ? "⏳ Đang lưu..." : "Lưu thay đổi"}
-          </button>
-
-          {/* RESET */}
-          <button
-            onClick={reset}
-            className="w-full py-3 rounded-xl font-semibold
-               bg-red-500 text-white
-               shadow-lg shadow-red-500/20
-               hover:bg-red-600 hover:scale-[1.02]
-               active:scale-[0.98]
-               transition"
-          >
-            Reset
           </button>
         </div>
       </main>

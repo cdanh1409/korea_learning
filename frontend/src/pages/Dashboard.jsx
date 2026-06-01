@@ -21,7 +21,7 @@ const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [user] = useState("Anh");
+  const [user, setUser] = useState("");
 
   const [stats, setStats] = useState({
     newWords: 0,
@@ -49,10 +49,14 @@ export default function Dashboard() {
 
     const fetchData = async () => {
       try {
-        const res = await api.get("/dashboard/summary");
-        const data = res.data;
+        const [dashboardRes, profileRes] = await Promise.all([
+          api.get("/dashboard/summary"),
+          api.get("/user/profile"), // sửa theo route thực tế
+        ]);
 
-        console.log("📊 DASHBOARD RAW:", data);
+        const data = dashboardRes.data;
+
+        setUser(profileRes.data?.fullName || "User");
 
         setStats({
           newWords: safeNumber(data?.stats?.newWords),
@@ -82,7 +86,7 @@ export default function Dashboard() {
           },
         });
       } catch (err) {
-        console.log("❌ FETCH ERROR:", err);
+        console.log(err);
 
         if (err?.response?.status === 401) {
           localStorage.removeItem("token");
