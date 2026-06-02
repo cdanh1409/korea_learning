@@ -6,8 +6,6 @@ export default defineConfig({
 
   server: {
     port: 5173,
-
-    // giúp gọi API không bị CORS khi dev
     proxy: {
       "/api": {
         target: "http://localhost:5000",
@@ -15,5 +13,9 @@ export default defineConfig({
         secure: false,
       },
     },
+  },
+
+  optimizeDeps: {
+    include: ["@rive-app/react-canvas", "@rive-app/canvas"],
   },
 });

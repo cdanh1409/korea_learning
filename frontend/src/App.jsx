@@ -8,7 +8,9 @@ import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Words from "./pages/Words";
 import PrivateRoute from "./routes/PrivateRoute";
+
 
 function App() {
   return (
@@ -35,6 +37,7 @@ function App() {
           <Route path="review" element={<Review />} />
           <Route path="stats" element={<Stats />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="words" element={<Words />} />
         </Route>
       </Routes>
     </BrowserRouter>

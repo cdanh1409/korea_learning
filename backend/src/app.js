@@ -34,6 +34,8 @@ app.use("/api/stats", require("./routes/stats.routes"));
 app.use("/api/review", require("./routes/review.routes"));
 app.use("/api/settings", require("./routes/settings.routes"));
 app.use("/api/user", require("./routes/user.routes"));
+app.use("/api/words", require("./routes/word.routes"));
+app.use("/api/notifications", require("./routes/notificationBell.routes"));
 
 app.get("/", (req, res) => {
   res.json({ ok: true });

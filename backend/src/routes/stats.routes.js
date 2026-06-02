@@ -12,46 +12,39 @@ router.get("/", verifyToken, async (req, res) => {
     const request = pool.request();
     request.input("userId", sql.Int, userId);
 
-    // ================= TOTAL WORDS =================
-    const totalResult = await request.query(`
-      SELECT COUNT(*) AS totalWords
+    // ================= SINGLE QUERY (OPTIMIZED) =================
+    const result = await request.query(`
+      SELECT
+        COUNT(*) AS totalWords,
+
+        SUM(CASE WHEN IsLearned = 1 THEN 1 ELSE 0 END) AS masteredWords,
+
+        SUM(
+          CASE 
+            WHEN IsLearned = 0 AND NextReview <= GETDATE() THEN 1 
+            ELSE 0 
+          END
+        ) AS dueWords,
+
+        SUM(
+          CASE 
+            WHEN IsLearned = 0 AND NextReview > GETDATE() THEN 1 
+            ELSE 0 
+          END
+        ) AS newWords,
+
+        AVG(
+          CASE 
+            WHEN (CorrectCount + WrongCount) = 0 THEN 0
+            ELSE (CorrectCount * 1.0) / (CorrectCount + WrongCount)
+          END
+        ) AS avgScore
+
       FROM UserVocabularyProgress
       WHERE UserId = @userId AND IsActive = 1
     `);
 
-    // ================= MASTERED =================
-    const masteredResult = await request.query(`
-      SELECT COUNT(*) AS masteredWords
-      FROM UserVocabularyProgress
-      WHERE UserId = @userId
-        AND IsLearned = 1
-        AND IsActive = 1
-    `);
-
-    // ================= WEAK WORDS =================
-    const weakResult = await request.query(`
-      SELECT COUNT(*) AS weakWords
-      FROM UserVocabularyProgress
-      WHERE UserId = @userId
-        AND NextReview <= GETDATE()
-        AND IsActive = 1
-    `);
-
-    // ================= AVG SCORE =================
-    const avgResult = await request.query(`
-      SELECT AVG(
-        CASE 
-          WHEN (CorrectCount + WrongCount) = 0 THEN 0
-          ELSE (CorrectCount * 1.0) / (CorrectCount + WrongCount)
-        END
-      ) AS avgScore
-      FROM UserVocabularyProgress
-      WHERE UserId = @userId
-        AND IsActive = 1
-    `);
-
-    const avgScoreRaw = avgResult.recordset[0]?.avgScore;
-    const avgScore = Number(avgScoreRaw || 0).toFixed(2);
+    const stats = result.recordset[0];
 
     // ================= WEEKLY =================
     const weeklyResult = await request.query(`
@@ -78,20 +71,17 @@ router.get("/", verifyToken, async (req, res) => {
       }
     });
 
-    // ================= RESPONSE =================
     res.json({
-      totalWords: totalResult.recordset[0]?.totalWords || 0,
-      masteredWords: masteredResult.recordset[0]?.masteredWords || 0,
-      weakWords: weakResult.recordset[0]?.weakWords || 0,
-      avgScore,
+      totalWords: stats.totalWords || 0,
+      masteredWords: stats.masteredWords || 0,
+      dueWords: stats.dueWords || 0,
+      newWords: stats.newWords || 0,
+      avgScore: parseFloat(stats.avgScore || 0),
       weeklyScore: last7Days,
     });
   } catch (err) {
     console.log("❌ Stats API error:", err);
-    res.status(500).json({
-      message: "Server error",
-      error: err.message,
-    });
+    res.status(500).json({ message: "Server error" });
   }
 });
 

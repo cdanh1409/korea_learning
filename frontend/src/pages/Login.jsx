@@ -3,6 +3,9 @@ import { useNavigate, Link } from "react-router-dom";
 import api from "../utils/api";
 import { setToken, setUser } from "../utils/auth";
 
+import "../css/login.css";
+import LoginMascot from "../components/ui/LoginMascot";
+
 export default function Login() {
   const [form, setForm] = useState({
     email: "",
@@ -10,15 +13,21 @@ export default function Login() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
   const navigate = useNavigate();
 
+  // ================= HANDLE INPUT =================
   const handleChange = (e) => {
-    setForm((p) => ({
-      ...p,
-      [e.target.name]: e.target.value,
+    const { name, value } = e.target;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
     }));
   };
 
+  // ================= SUBMIT =================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -30,88 +39,95 @@ export default function Login() {
     try {
       setLoading(true);
 
-      console.log("🔥 LOGIN START");
-      console.log("📤 FORM DATA:", form);
+      const { data } = await api.post("/auth/login", form);
 
-      // ================= AXIOS CALL =================
-      const res = await api.post("/auth/login", form);
-
-      console.log("🔥 FULL RESPONSE:", res);
-      console.log("🔥 RESPONSE DATA:", res.data);
-
-      const data = res.data;
-
-      // ================= DEBUG TOKEN PARSING =================
-      const token = data?.token;
-      const user = data?.user;
-
-      console.log("🔑 TOKEN RAW:", token);
-      console.log("👤 USER RAW:", user);
-
-      if (!token) {
-        console.log("❌ TOKEN IS NULL → CHECK BACKEND RESPONSE STRUCTURE");
+      if (!data?.token) {
         alert(data?.message || "Login failed");
         return;
       }
 
-      // ================= SAVE =================
-      setToken(token);
-      setUser(user);
-
-      localStorage.setItem("token", token);
-
-      console.log("💾 SAVED TOKEN:", localStorage.getItem("token"));
-
-      console.log("🚀 LOGIN SUCCESS → NAVIGATE");
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem("token", data.token);
 
       navigate("/");
     } catch (err) {
-      console.log("❌ LOGIN ERROR FULL:", err);
-      console.log("❌ RESPONSE ERROR:", err?.response?.data);
-
-      alert(err?.response?.data?.message || "Server error");
+      console.error("LOGIN ERROR:", err);
+      alert(err?.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
-      console.log("🏁 LOGIN FINISHED");
     }
   };
 
+  // ================= UI =================
   return (
-    <div className="h-screen flex items-center justify-center">
-      <form
-        onSubmit={handleSubmit}
-        className="p-6 border rounded w-[320px] space-y-3"
-      >
-        <h1 className="text-xl font-bold text-center">Login</h1>
+    <div className="login-container">
+      <div className="login-box">
+        {/* LEFT */}
+        <div className="login-left">
+          <div className="left-content">
+            <LoginMascot showPassword={showPassword} />
 
-        <input
-          name="email"
-          placeholder="Email"
-          onChange={handleChange}
-          className="border p-2 w-full"
-        />
+            <h1>TOPIK AI</h1>
 
-        <input
-          name="password"
-          type="password"
-          placeholder="Password"
-          onChange={handleChange}
-          className="border p-2 w-full"
-        />
-
-        <button
-          disabled={loading}
-          className="bg-blue-500 text-white w-full p-2 rounded"
-        >
-          {loading ? "Loading..." : "Login"}
-        </button>
-
-        <div className="text-center text-sm">
-          <Link to="/register" className="text-blue-500">
-            Register
-          </Link>
+            <p>
+              Học từ vựng TOPIK bằng AI, SRS và hệ thống thống kê thông minh.
+            </p>
+          </div>
         </div>
-      </form>
+
+        {/* RIGHT */}
+        <div className="login-right">
+          <form className="login-form" onSubmit={handleSubmit}>
+            <h2 className="login-title">Welcome Back 👋</h2>
+
+            <p className="login-subtitle">Đăng nhập để tiếp tục học TOPIK</p>
+
+            {/* EMAIL */}
+            <input
+              type="email"
+              name="email"
+              value={form.email}
+              placeholder="Email"
+              onChange={handleChange}
+              className="login-input"
+              autoComplete="email"
+            />
+
+            {/* PASSWORD */}
+            <div className="password-wrapper">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={form.password}
+                placeholder="Password"
+                onChange={handleChange}
+                className="login-input"
+                autoComplete="current-password"
+              />
+
+              <button
+                type="button"
+                className="toggle-password"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setShowPassword((prev) => !prev)}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+
+            {/* SUBMIT */}
+            <button type="submit" disabled={loading} className="login-button">
+              {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+            </button>
+
+            {/* LINK */}
+            <div className="login-link">
+              Chưa có tài khoản? <Link to="/register">Đăng ký ngay</Link>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Moon, Sun } from "lucide-react";
 import { useContext, useEffect, useState } from "react";
 import { ThemeContext } from "../context/theme/ThemeContext";
 import api from "../utils/api";
+import NotificationBell from "../pages/NotificationBell";
 
 export default function Header() {
   const { darkMode, toggleTheme } = useContext(ThemeContext);
@@ -54,6 +55,9 @@ export default function Header() {
 
       {/* Right */}
       <div className="ml-auto flex items-center gap-3">
+        {/* 🔔 NOTIFICATION */}
+        <NotificationBell />
+
         {/* Theme */}
         <button
           onClick={toggleTheme}

@@ -50,29 +50,42 @@ exports.getAllVocabulary = async (req, res) => {
       .request()
       .input("topicId", sql.Int, topicId)
       .input("userId", sql.Int, userId).query(`
-        SELECT 
-          v.Id,
-          v.Word,
-          v.Meaning,
-          v.Pronunciation,
-          v.AudioUrl,
-          v.Level,
-          v.TopicId,
-          v.ExampleSentence,
-          v.ExampleMeaning,
+    SELECT 
+      v.Id,
+      v.Word,
+      v.Meaning,
+      v.Pronunciation,
+      v.AudioUrl,
+      v.Level,
+      v.TopicId,
 
-          ISNULL(p.Repetition, 0) AS Repetition,
-          ISNULL(p.IntervalDays, 0) AS IntervalDays,
-          ISNULL(p.EaseFactor, 2.5) AS EaseFactor,
-          p.NextReview,
-          ISNULL(p.IsLearned, 0) AS IsLearned,
-          ISNULL(p.IsActive, 1) AS IsActive
-        FROM Vocabulary v
-        LEFT JOIN UserVocabularyProgress p 
-          ON p.VocabularyId = v.Id AND p.UserId = @userId
-        WHERE v.TopicId = @topicId
-        ORDER BY v.Id
-      `);
+      ex.ExampleSentence,
+      ex.ExampleMeaning,
+
+      ISNULL(p.Repetition, 0) AS Repetition,
+      ISNULL(p.IntervalDays, 0) AS IntervalDays,
+      ISNULL(p.EaseFactor, 2.5) AS EaseFactor,
+      p.NextReview,
+      ISNULL(p.IsLearned, 0) AS IsLearned,
+      ISNULL(p.IsActive, 1) AS IsActive
+
+    FROM Vocabulary v
+
+    LEFT JOIN UserVocabularyProgress p 
+      ON p.VocabularyId = v.Id AND p.UserId = @userId
+
+    OUTER APPLY (
+      SELECT TOP 1
+        ExampleSentence,
+        ExampleMeaning
+      FROM VocabularyExamples ve
+      WHERE ve.VocabularyId = v.Id
+      ORDER BY ve.Level ASC, ve.Id ASC
+    ) ex
+
+    WHERE v.TopicId = @topicId
+    ORDER BY v.Id
+  `);
 
     res.json(result.recordset || []);
   } catch (err) {

@@ -18,19 +18,12 @@ import {
 // ================= SAFE =================
 const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
-// ================= COLORS =================
-const COLORS = {
-  primary: "var(--primary)",
-  warning: "var(--warning)",
-  muted: "var(--muted)",
-  border: "var(--border)",
-};
-
 export default function Stats() {
   const [statsData, setStatsData] = useState({
     totalWords: 0,
     masteredWords: 0,
     weakWords: 0,
+    newWords: 0,
     avgScore: 0,
   });
 
@@ -51,10 +44,13 @@ export default function Stats() {
           totalWords: data?.totalWords ?? 0,
           masteredWords: data?.masteredWords ?? 0,
           weakWords: data?.weakWords ?? 0,
+          newWords: data?.newWords ?? 0,
           avgScore: data?.avgScore ?? 0,
         });
 
-        setWeeklyScore(data?.weeklyScore ?? []);
+        setWeeklyScore(
+          Array.isArray(data?.weeklyScore) ? data.weeklyScore : [],
+        );
         setError("");
       } catch (err) {
         console.log(err);
@@ -64,6 +60,7 @@ export default function Stats() {
           totalWords: 0,
           masteredWords: 0,
           weakWords: 0,
+          newWords: 0,
           avgScore: 0,
         });
 
@@ -77,12 +74,29 @@ export default function Stats() {
   }, []);
 
   // ================= CALC =================
-  const progress =
-    statsData.totalWords > 0
+
+  const progress = useMemo(() => {
+    return statsData.totalWords > 0
       ? Math.round((statsData.masteredWords / statsData.totalWords) * 100)
       : 0;
+  }, [statsData]);
 
-  const totalTopik = statsData.totalWords;
+  const remainingWords = useMemo(() => {
+    return Math.max(
+      statsData.totalWords -
+        statsData.masteredWords -
+        statsData.weakWords -
+        statsData.newWords,
+      0,
+    );
+  }, [statsData]);
+
+  const insight = useMemo(() => {
+    if (progress >= 80) return "🔥 Bạn đang làm rất tốt";
+    if (progress >= 50) return "📈 Đang tiến bộ ổn định";
+    if (progress >= 20) return "⚠️ Cần luyện thêm";
+    return "🧠 Hãy bắt đầu đều đặn";
+  }, [progress]);
 
   // ================= CHART =================
   const trendData = useMemo(() => {
@@ -92,31 +106,39 @@ export default function Stats() {
     }));
   }, [weeklyScore]);
 
-  // ================= PIE (FIXED) =================
+  // ================= PIE (FIXED SRS MODEL) =================
   const pieData = useMemo(() => {
-    const mastered = Math.min(statsData.masteredWords, statsData.totalWords);
-
-    const remaining = Math.max(statsData.totalWords - mastered, 0);
-
     return [
-      { name: "Đã thuộc", value: mastered },
-      { name: "Cần ôn", value: remaining },
+      { name: "Đã thuộc", value: statsData.masteredWords },
+      { name: "Cần ôn", value: statsData.weakWords },
+      { name: "Mới", value: statsData.newWords },
+      { name: "Chưa học", value: remainingWords },
     ];
-  }, [statsData]);
+  }, [statsData, remainingWords]);
 
-  // ================= INSIGHT =================
-  const insight = useMemo(() => {
-    if (progress >= 80) return "🔥 Rất tốt";
-    if (progress >= 50) return "📈 Ổn định";
-    if (progress >= 20) return "⚠️ Cần cải thiện";
-    return "🧠 Bắt đầu học";
-  }, [progress]);
+  const totalWords = statsData.totalWords;
 
   // ================= LOADING =================
   if (loading) {
     return (
-      <div className="p-3">
-        <Card>⏳ Loading...</Card>
+      <div className="p-2 space-y-3">
+        <Card>
+          <div className="h-4 w-1/3 bg-[var(--card2)] animate-pulse rounded" />
+          <div className="h-3 w-1/2 mt-2 bg-[var(--card2)] animate-pulse rounded" />
+        </Card>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <div className="h-6 w-1/2 bg-[var(--card2)] animate-pulse rounded" />
+              <div className="h-4 w-1/3 mt-2 bg-[var(--card2)] animate-pulse rounded" />
+            </Card>
+          ))}
+        </div>
+
+        <Card>
+          <div className="h-[200px] bg-[var(--card2)] animate-pulse rounded" />
+        </Card>
       </div>
     );
   }
@@ -140,7 +162,7 @@ export default function Stats() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Card>
           <p className="text-xs text-[var(--muted)]">Tổng</p>
-          <h2 className="text-xl font-bold">{statsData.totalWords}</h2>
+          <h2 className="text-xl font-bold">{totalWords}</h2>
         </Card>
 
         <Card>
@@ -153,14 +175,14 @@ export default function Stats() {
         <Card>
           <p className="text-xs text-[var(--muted)]">Cần ôn</p>
           <h2 className="text-xl font-bold text-orange-500">
-            {statsData.totalWords - statsData.masteredWords}
+            {statsData.weakWords}
           </h2>
         </Card>
 
         <Card>
-          <p className="text-xs text-[var(--muted)]">Avg</p>
+          <p className="text-xs text-[var(--muted)]">Mới</p>
           <h2 className="text-xl font-bold text-blue-500">
-            {Number(statsData.avgScore).toFixed(1)}
+            {statsData.newWords}
           </h2>
         </Card>
       </div>
@@ -174,7 +196,7 @@ export default function Stats() {
 
         <div className="h-2 bg-[var(--card2)] rounded-full overflow-hidden">
           <div
-            className="h-2 bg-[var(--primary)]"
+            className="h-2 bg-[var(--primary)] transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -186,19 +208,19 @@ export default function Stats() {
         <Card>
           <h3 className="text-sm mb-2">📈 Weekly</h3>
 
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={trendData}>
-              <CartesianGrid stroke={COLORS.border} opacity={0.2} />
-              <XAxis dataKey="day" />
-              <YAxis />
-              <Tooltip />
-              <Bar
-                dataKey="score"
-                fill="var(--primary)"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          {trendData.length === 0 ? (
+            <p className="text-xs text-[var(--muted)]">Không có dữ liệu tuần</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={trendData}>
+                <CartesianGrid opacity={0.2} />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="score" fill="var(--primary)" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         {/* PIE */}
@@ -209,24 +231,33 @@ export default function Stats() {
             <PieChart width={180} height={180}>
               <Pie
                 data={pieData}
-                innerRadius={40}
-                outerRadius={60}
                 dataKey="value"
+                innerRadius={45}
+                outerRadius={65}
               >
                 <Cell fill="var(--primary)" />
                 <Cell fill="var(--warning)" />
+                <Cell fill="blue" />
+                <Cell fill="gray" />
               </Pie>
             </PieChart>
 
             <div className="text-xs space-y-1">
-              <div>Total: {totalTopik}</div>
+              <div>Total: {totalWords}</div>
 
               {pieData.map((d, i) => (
                 <div key={i} className="flex gap-2 items-center">
                   <span
                     className="w-2 h-2 rounded-full"
                     style={{
-                      background: i === 0 ? "var(--primary)" : "var(--warning)",
+                      background:
+                        i === 0
+                          ? "var(--primary)"
+                          : i === 1
+                            ? "var(--warning)"
+                            : i === 2
+                              ? "blue"
+                              : "gray",
                     }}
                   />
                   {d.name}: {d.value}

@@ -1,0 +1,54 @@
+.mascot {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 15px;
+  position: relative;
+}
+
+/* FACE */
+.face {
+  width: 100%;
+  height: 100%;
+  background: #1f2937;
+  border-radius: 20px;
+  position: relative;
+}
+
+/* EYES */
+.eyes {
+  display: flex;
+  justify-content: space-around;
+  padding-top: 40px;
+}
+
+.eye {
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.05s linear;
+}
+
+/* HANDS (che mắt) */
+.hands {
+  position: absolute;
+  top: 35px;
+  left: 0;
+  right: 0;
+
+  height: 20px;
+  background: transparent;
+}
+
+.mascot.cover .eye {
+  opacity: 0.2;
+}
+
+.mascot.cover::after {
+  content: "🙈";
+  position: absolute;
+  font-size: 30px;
+  top: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+}
