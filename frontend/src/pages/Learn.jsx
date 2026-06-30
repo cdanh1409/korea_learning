@@ -67,7 +67,9 @@ export default function Learn() {
       .then((res) => {
         setTopics(res.data || []);
       })
-      .catch(console.log);
+      .catch((err) => {
+        console.error(err);
+      });
   }, []);
 
   // ================= LOAD WORDS =================

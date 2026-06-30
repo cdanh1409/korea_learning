@@ -10,55 +10,56 @@ export default function NotificationBell() {
 
   const dropdownRef = useRef(null);
 
-  /* ================= API ================= */
+  // ================= COUNT =================
   const loadCount = useCallback(async () => {
     try {
       const { data } = await api.get("/notifications/count");
-      setCount(data?.count || 0);
+      setCount(Number(data?.count || 0));
     } catch (err) {
       console.error(err);
     }
   }, []);
 
+  // ================= LIST =================
   const loadList = useCallback(async () => {
     try {
       setLoading(true);
+
       const { data } = await api.get("/notifications/list");
       setList(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setList([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /* ================= INIT COUNT ================= */
+  // ================= INIT =================
   useEffect(() => {
     loadCount();
-    const interval = setInterval(loadCount, 60000);
+    const interval = setInterval(loadCount, 30000);
     return () => clearInterval(interval);
   }, [loadCount]);
 
-  /* ================= OPEN DROPDOWN ================= */
+  // ================= OPEN =================
   useEffect(() => {
-    if (open) {
-      loadList();
+    if (!open) return;
 
-      // UX: mở ra coi như đã đọc
-      setCount(0);
-    }
-  }, [open, loadList]);
+    loadList();
+    loadCount(); // sync lại
+  }, [open, loadList, loadCount]);
 
-  /* ================= CLICK OUTSIDE ================= */
+  // ================= CLICK OUTSIDE =================
   useEffect(() => {
-    const handleClickOutside = (e) => {
+    const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setOpen(false);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   return (
@@ -66,13 +67,13 @@ export default function NotificationBell() {
       {/* BUTTON */}
       <button
         onClick={() => setOpen((p) => !p)}
-        className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--card2)] border transition hover:scale-105 active:scale-95"
+        className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--card2)] border"
       >
         <Bell size={18} />
 
         {/* BADGE */}
         {count > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 rounded-full animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 rounded-full">
             {count}
           </span>
         )}
@@ -80,25 +81,19 @@ export default function NotificationBell() {
 
       {/* DROPDOWN */}
       {open && (
-        <div
-          className="absolute right-0 mt-2 w-72 bg-[var(--card)] border rounded-xl shadow-lg z-50
-                     animate-[fadeIn_0.15s_ease-out]"
-        >
-          {/* HEADER */}
-          <div className="p-3 border-b font-semibold flex justify-between items-center">
+        <div className="absolute right-0 mt-2 w-72 bg-[var(--card)] border rounded-xl shadow-lg z-50">
+          <div className="p-3 border-b font-semibold flex justify-between">
             <span>Từ cần ôn</span>
             <span className="text-xs opacity-60">{list.length} từ</span>
           </div>
 
-          {/* LIST */}
           <div className="max-h-64 overflow-y-auto">
             {loading ? (
-              // skeleton
-              <div className="p-3 space-y-3">
+              <div className="p-3 space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-10 bg-[var(--card2)] rounded animate-pulse"
+                    className="h-10 bg-[var(--card2)] animate-pulse rounded"
                   />
                 ))}
               </div>
@@ -108,8 +103,7 @@ export default function NotificationBell() {
               list.map((w) => (
                 <div
                   key={w.Id}
-                  className="p-3 hover:bg-[var(--card2)] border-b cursor-pointer transition"
-                  onClick={() => setOpen(false)}
+                  className="p-3 border-b hover:bg-[var(--card2)]"
                 >
                   <div className="font-medium">{w.Word}</div>
                   <div className="text-xs opacity-60">{w.Meaning}</div>
@@ -119,22 +113,6 @@ export default function NotificationBell() {
           </div>
         </div>
       )}
-
-      {/* ANIMATION CSS (global hoặc tailwind config) */}
-      <style>
-        {`
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-              transform: translateY(-6px) scale(0.98);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-        `}
-      </style>
     </div>
   );
 }

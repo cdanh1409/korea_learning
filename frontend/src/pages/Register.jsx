@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { register } from "../services/authService";
 import { useNavigate, Link } from "react-router-dom";
-
 import "../css/login.css";
 import LoginMascot from "../components/ui/LoginMascot";
 
@@ -13,8 +12,12 @@ export default function Register() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [visible, setVisible] = useState({
+    password: false,
+    confirmPassword: false,
+  });
+
+  const [error, setError] = useState({});
 
   const navigate = useNavigate();
 
@@ -26,40 +29,75 @@ export default function Register() {
       ...prev,
       [name]: value,
     }));
+
+    setError((prev) => ({
+      ...prev,
+      [name]: "",
+    }));
+  };
+
+  // ================= VALIDATE =================
+  const validate = () => {
+    const newError = {};
+
+    const email = form.email.trim();
+    const password = form.password;
+    const confirmPassword = form.confirmPassword;
+
+    if (!email) newError.email = "Email không được để trống";
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (email && !emailRegex.test(email)) {
+      newError.email = "Email không hợp lệ";
+    }
+
+    if (!password) newError.password = "Mật khẩu không được để trống";
+
+    if (password && password.length < 6) {
+      newError.password = "Mật khẩu phải >= 6 ký tự";
+    }
+
+    if (!confirmPassword) {
+      newError.confirmPassword = "Vui lòng xác nhận mật khẩu";
+    }
+
+    if (password && confirmPassword && password !== confirmPassword) {
+      newError.confirmPassword = "Mật khẩu không khớp";
+    }
+
+    setError(newError);
+
+    return Object.keys(newError).length === 0;
   };
 
   // ================= SUBMIT =================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.email || !form.password || !form.confirmPassword) {
-      alert("Vui lòng nhập đầy đủ thông tin");
-      return;
-    }
-
-    if (form.password !== form.confirmPassword) {
-      alert("Mật khẩu không khớp");
-      return;
-    }
+    if (!validate()) return;
 
     try {
       setLoading(true);
 
       const res = await register({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
       });
 
       if (!res?.message) {
-        alert(res?.error || "Register failed");
+        setError({
+          email: res?.error || "Đăng ký thất bại",
+        });
         return;
       }
 
-      alert("Đăng ký thành công");
       navigate("/login");
     } catch (err) {
-      console.log("REGISTER ERROR:", err);
-      alert("Server error");
+      console.error("REGISTER ERROR:", err);
+
+      setError({
+        email: "Server error, vui lòng thử lại",
+      });
     } finally {
       setLoading(false);
     }
@@ -72,11 +110,12 @@ export default function Register() {
         {/* LEFT */}
         <div className="login-left">
           <div className="left-content">
-            <LoginMascot showPassword={showPassword || showConfirmPassword} />
+            <LoginMascot
+              showPassword={visible.password || visible.confirmPassword}
+            />
 
             <h1>TOPIK AI</h1>
-
-            <p>Tạo tài khoản để bắt đầu học từ vựng TOPIK bằng AI thông minh</p>
+            <p>Tạo tài khoản để bắt đầu học TOPIK</p>
           </div>
         </div>
 
@@ -84,65 +123,84 @@ export default function Register() {
         <div className="login-right">
           <form className="login-form" onSubmit={handleSubmit}>
             <h2 className="login-title">Create Account ✨</h2>
-
-            <p className="login-subtitle">
-              Đăng ký để bắt đầu hành trình học TOPIK
-            </p>
+            <p className="login-subtitle">Đăng ký để bắt đầu</p>
 
             {/* EMAIL */}
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              placeholder="Email"
-              onChange={handleChange}
-              className="login-input"
-              autoComplete="email"
-            />
+            <div>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                placeholder="Email"
+                onChange={handleChange}
+                className="login-input"
+                autoComplete="email"
+                disabled={loading}
+              />
+              {error.email && (
+                <p className="text-red-500 text-sm mt-1">{error.email}</p>
+              )}
+            </div>
 
             {/* PASSWORD */}
             <div className="password-wrapper">
               <input
-                type={showPassword ? "text" : "password"}
+                type={visible.password ? "text" : "password"}
                 name="password"
                 value={form.password}
                 placeholder="Password"
                 onChange={handleChange}
                 className="login-input"
                 autoComplete="new-password"
+                disabled={loading}
               />
 
               <button
                 type="button"
                 className="toggle-password"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setShowPassword((p) => !p)}
+                onClick={() =>
+                  setVisible((p) => ({ ...p, password: !p.password }))
+                }
               >
-                {showPassword ? "🙈" : "👁"}
+                {visible.password ? "🙈" : "👁"}
               </button>
             </div>
+            {error.password && (
+              <p className="text-red-500 text-sm mt-1">{error.password}</p>
+            )}
 
             {/* CONFIRM PASSWORD */}
             <div className="password-wrapper">
               <input
-                type={showConfirmPassword ? "text" : "password"}
+                type={visible.confirmPassword ? "text" : "password"}
                 name="confirmPassword"
                 value={form.confirmPassword}
                 placeholder="Confirm Password"
                 onChange={handleChange}
                 className="login-input"
                 autoComplete="new-password"
+                disabled={loading}
               />
 
               <button
                 type="button"
                 className="toggle-password"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setShowConfirmPassword((p) => !p)}
+                onClick={() =>
+                  setVisible((p) => ({
+                    ...p,
+                    confirmPassword: !p.confirmPassword,
+                  }))
+                }
               >
-                {showConfirmPassword ? "🙈" : "👁"}
+                {visible.confirmPassword ? "🙈" : "👁"}
               </button>
             </div>
+
+            {error.confirmPassword && (
+              <p className="text-red-500 text-sm mt-1">
+                {error.confirmPassword}
+              </p>
+            )}
 
             {/* BUTTON */}
             <button type="submit" disabled={loading} className="login-button">

@@ -7,6 +7,7 @@ import {
   List,
   Settings,
   LogOut,
+  //FileText,
 } from "lucide-react";
 
 import { useNavigate, useLocation } from "react-router-dom";
@@ -16,12 +17,44 @@ import { ThemeContext } from "../context/theme/ThemeContext";
 
 const menu = [
   { icon: Home, label: "Trang chủ", path: "/" },
+
+  // HỌC
   { icon: Book, label: "Học từ vựng", path: "/learn" },
+
+  // TEST TRÌNH ĐỘ
+  {
+    icon: Brain,
+    label: "Kiểm tra trình độ",
+    path: "/placement-test",
+  },
+
+  // ÔN TẬP
   { icon: RefreshCcw, label: "Ôn tập", path: "/review" },
-  { icon: Brain, label: "Gợi ý ôn tập", path: "/suggest" },
-  { icon: BarChart2, label: "Thống kê", path: "/stats" },
-  { icon: List, label: "Danh sách từ", path: "/words" },
-  { icon: Settings, label: "Cài đặt", path: "/settings" },
+
+  // {
+  //   icon: FileText,
+  //   label: "Ôn TOPIK",
+  //   path: "/topik",
+  // },
+
+  // QUẢN LÝ
+  {
+    icon: BarChart2,
+    label: "Thống kê",
+    path: "/stats",
+  },
+
+  {
+    icon: List,
+    label: "Danh sách từ",
+    path: "/words",
+  },
+
+  {
+    icon: Settings,
+    label: "Cài đặt",
+    path: "/settings",
+  },
 ];
 
 export default function Sidebar() {

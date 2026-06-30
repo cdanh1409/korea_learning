@@ -1,14 +1,7 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+
 import Card from "../components/common/Card";
 import api from "../utils/api";
-
-/* ================= NORMALIZE ================= */
-const normalize = (s) =>
-  (s || "")
-    .toLowerCase()
-    .trim()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
 
 /* ================= CONSTANTS ================= */
 const LEVELS = ["all", "Sơ cấp", "Trung cấp", "Cao cấp"];
@@ -17,6 +10,8 @@ const PAGE_SIZE = 10;
 /* ================= PAGINATION ================= */
 const getPagination = (page, totalPages) => {
   const pages = [];
+
+  if (totalPages <= 1) return [1];
 
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -39,89 +34,132 @@ const getPagination = (page, totalPages) => {
   return pages;
 };
 
-/* ================= FORMAT HELPERS ================= */
-const formatEase = (ef) => {
-  const v = Number(ef);
-
-  if (v >= 2.6) return "Dễ";
-  if (v >= 2.0) return "Trung bình";
-  return "Khó";
-};
-
-const formatInterval = (days) => {
-  const d = Number(days);
-
-  if (!d || d <= 0) return "Ôn ngay";
-  if (d === 1) return "Sau 1 ngày";
-  return `Sau ${d} ngày`;
-};
-
-const toBool = (v) => v === true || v === 1 || v === "1";
-
 export default function Words() {
-  const [words, setWords] = useState([]);
+  /* ================= STATE ================= */
+  const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [topic, setTopic] = useState("all");
   const [level, setLevel] = useState("all");
 
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
   const [selectedWord, setSelectedWord] = useState(null);
 
-  /* ================= LOAD ================= */
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(true);
+
+  const noteTimeout = useRef(null);
+
+  /* ================= LOAD FROM BE ================= */
   const loadWords = useCallback(async () => {
     try {
-      const res = await api.get("/words");
-      setWords(res.data || []);
-    } catch (err) {
-      console.error("LOAD WORDS ERROR:", err);
+      setLoading(true);
+      setError("");
+
+      const res = await api.get("/words", {
+        params: {
+          page,
+          pageSize: PAGE_SIZE,
+          search,
+          topic,
+          level,
+        },
+      });
+
+      setData(res.data?.data || []);
+      setTotalPages(res.data?.totalPages || 1);
+    } catch {
+      setError("Không tải được dữ liệu từ server");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [page, search, topic, level]);
 
   useEffect(() => {
     loadWords();
   }, [loadWords]);
 
+  /* ================= RESET PAGE ================= */
   useEffect(() => {
     setPage(1);
   }, [search, topic, level]);
 
   /* ================= TOPICS ================= */
   const topics = useMemo(() => {
-    return ["all", ...new Set(words.map((w) => w.TopicName).filter(Boolean))];
-  }, [words]);
-
-  /* ================= FILTER ================= */
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase();
-
-    return words.filter((w) => {
-      const okSearch =
-        !s ||
-        w.Word?.toLowerCase().includes(s) ||
-        w.Meaning?.toLowerCase().includes(s);
-
-      const okTopic = topic === "all" || w.TopicName === topic;
-
-      const okLevel =
-        level === "all" || normalize(w.LevelName) === normalize(level);
-
-      return okSearch && okTopic && okLevel;
-    });
-  }, [words, search, topic, level]);
+    const set = new Set();
+    for (const w of data) if (w.TopicName) set.add(w.TopicName);
+    return ["all", ...set];
+  }, [data]);
 
   /* ================= PAGINATION ================= */
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-
-  const paginated = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
-
   const pages = useMemo(
     () => getPagination(page, totalPages),
     [page, totalPages],
   );
 
+  /* ================= NOTE UPDATE ================= */
+  const updateNote = useCallback((value, id) => {
+    if (!id) return;
+
+    setSelectedWord((prev) => ({ ...prev, Note: value }));
+
+    setData((prev) =>
+      prev.map((w) => (w.Id === id ? { ...w, Note: value } : w)),
+    );
+
+    clearTimeout(noteTimeout.current);
+
+    setSavingNote(true);
+    setNoteSaved(false);
+
+    noteTimeout.current = setTimeout(async () => {
+      try {
+        await api.put(`/words/${id}/note`, { note: value });
+        setNoteSaved(true);
+      } catch (err) {
+        console.error("SAVE NOTE ERROR:", err);
+        setNoteSaved(false);
+      } finally {
+        setSavingNote(false);
+      }
+    }, 500);
+  }, []);
+
+  /*----------------*/
+  const toBool = (v) => {
+    return v === true || v === 1 || v === "1";
+  };
+
+  /* ================= SPEAK ================= */
+  const speakWord = (word) => {
+    if (!("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = "ko-KR";
+    utterance.rate = 0.85;
+
+    const voices = window.speechSynthesis.getVoices();
+    const koVoice =
+      voices.find((v) => v.lang === "ko-KR") ||
+      voices.find((v) => v.lang?.includes("ko"));
+
+    if (koVoice) utterance.voice = koVoice;
+
+    setTimeout(() => window.speechSynthesis.speak(utterance), 50);
+  };
+
+  /* ================= CLEANUP ================= */
+  useEffect(() => {
+    return () => clearTimeout(noteTimeout.current);
+  }, []);
+
+  /* ================= UI ================= */
   return (
     <div className="p-6 space-y-6 bg-[var(--bg)] text-[var(--text)] min-h-screen">
       {/* HEADER */}
@@ -130,13 +168,18 @@ export default function Words() {
         <p className="text-sm opacity-70">Click vào từ để xem chi tiết</p>
       </div>
 
+      {/* ERROR */}
+      {error && (
+        <div className="p-3 bg-red-500/20 text-red-400 rounded-lg">{error}</div>
+      )}
+
       {/* FILTER */}
       <Card className="p-4">
         <div className="grid md:grid-cols-3 gap-4">
           <select
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            className="p-3 rounded-xl border bg-[var(--card)]"
+            className="p-2 rounded-lg bg-[var(--card2)]"
           >
             {topics.map((t) => (
               <option key={t} value={t}>
@@ -148,7 +191,7 @@ export default function Words() {
           <select
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            className="p-3 rounded-xl border bg-[var(--card)]"
+            className="p-2 rounded-lg bg-[var(--card2)]"
           >
             {LEVELS.map((l) => (
               <option key={l} value={l}>
@@ -161,66 +204,62 @@ export default function Words() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 Tìm từ..."
-            className="p-3 rounded-xl border bg-[var(--card)]"
+            className="p-2 rounded-lg bg-[var(--card2)]"
           />
         </div>
       </Card>
 
       {/* TABLE */}
-      <Card className="overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="p-4">Từ</th>
-              <th className="p-4">Nghĩa</th>
-              <th className="p-4">Chủ đề</th>
-              <th className="p-4">Trình độ</th>
-              <th className="p-4">Trạng thái</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {paginated.map((w) => (
-              <tr
-                key={w.Id}
-                onClick={() => setSelectedWord(w)}
-                className="border-b hover:bg-[var(--card2)] cursor-pointer"
-              >
-                <td className="p-4 font-semibold">{w.Word}</td>
-                <td className="p-4">{w.Meaning}</td>
-                <td className="p-4">{w.TopicName}</td>
-                <td className="p-4">{w.LevelName}</td>
-                <td className="p-4">
-                  {toBool(w.IsLearned) ? "⭐ Đã học" : "📖 Chưa học"}
-                </td>
+      <Card>
+        {loading ? (
+          <div className="p-6 text-center">Đang tải...</div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="p-4">Từ</th>
+                <th className="p-4">Nghĩa</th>
+                <th className="p-4">Chủ đề</th>
+                <th className="p-4">Trình độ</th>
+                <th className="p-4">Trạng thái</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {data.map((w) => (
+                <tr
+                  key={w.Id}
+                  onClick={() => setSelectedWord(w)}
+                  className="border-b hover:bg-[var(--card2)] cursor-pointer"
+                >
+                  <td className="p-4 font-semibold">{w.Word}</td>
+                  <td className="p-4">{w.Meaning}</td>
+                  <td className="p-4">{w.TopicName}</td>
+                  <td className="p-4">{w.LevelName}</td>
+                  <td className="p-4">
+                    {w.IsLearned ? "⭐ Đã học" : "📖 Chưa học"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
 
       {/* PAGINATION */}
       <div className="flex gap-2 justify-center">
-        <button
-          disabled={page === 1}
-          onClick={() => setPage((p) => p - 1)}
-          className="px-3 py-1 border rounded"
-        >
+        <button disabled={page === 1} onClick={() => setPage(page - 1)}>
           ←
         </button>
 
         {pages.map((p, i) =>
           p === "..." ? (
-            <span key={i} className="px-2">
-              ...
-            </span>
+            <span key={i}>...</span>
           ) : (
             <button
-              key={p}
+              key={i}
               onClick={() => setPage(p)}
-              className={`px-3 py-1 border rounded ${
-                page === p ? "bg-blue-500 text-white" : ""
-              }`}
+              className={page === p ? "bg-blue-500 text-white px-2" : "px-2"}
             >
               {p}
             </button>
@@ -229,74 +268,123 @@ export default function Words() {
 
         <button
           disabled={page === totalPages}
-          onClick={() => setPage((p) => p + 1)}
-          className="px-3 py-1 border rounded"
+          onClick={() => setPage(page + 1)}
         >
           →
         </button>
       </div>
 
-      {/* ================= MODAL DETAIL (UPDATED UX) ================= */}
+      {/* MODAL (GIỮ NGUYÊN 100%) */}
+
       {selectedWord && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center"
-          onClick={() => setSelectedWord(null)}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => {
+            clearTimeout(noteTimeout.current);
+
+            setSelectedWord(null);
+          }}
         >
           <div
-            className="bg-[var(--card)] p-6 rounded-2xl w-[520px] space-y-4"
+            className="bg-[var(--card)] rounded-2xl w-full max-w-4xl p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-2xl font-bold">{selectedWord.Word}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* CARD 1 */}
 
-            <p>
-              <b>Nghĩa:</b> {selectedWord.Meaning}
-            </p>
+              <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
+                <h2 className="text-2xl font-bold">{selectedWord.Word}</h2>
 
-            <p>
-              <b>Phiên âm:</b> {selectedWord.Pronunciation || "-"}
-            </p>
+                <p className="opacity-70">
+                  {selectedWord.Pronunciation
+                    ? `/${selectedWord.Pronunciation}/`
+                    : "..."}
+                </p>
 
-            <p>
-              <b>Chủ đề:</b> {selectedWord.TopicName}
-            </p>
+                <p className="text-lg">{selectedWord.Meaning}</p>
 
-            {/* EXAMPLE */}
-            <div className="p-3 rounded bg-black/5">
-              <p className="font-semibold">Ví dụ:</p>
-              <p>{selectedWord.ExampleSentence || "Chưa có ví dụ"}</p>
-              <p className="opacity-70 text-sm">
-                {selectedWord.ExampleMeaning || ""}
-              </p>
+                <button
+                  className="mt-2 px-3 py-2 bg-blue-500 text-white rounded-lg"
+                  onClick={() => speakWord(selectedWord.Word)}
+                >
+                  🔊 Phát âm chuẩn
+                </button>
+              </div>
+
+              {/* CARD 2 */}
+
+              <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
+                <p>
+                  <b>Chủ đề:</b> {selectedWord.TopicName}
+                </p>
+
+                <p>
+                  <b>Trình độ:</b> {selectedWord.LevelName}
+                </p>
+
+                <p>
+                  <b>Loại từ:</b> {selectedWord.WordType || "-"}
+                </p>
+
+                <p>
+                  <b>Số lần ôn:</b> {selectedWord.Repetition}
+                </p>
+
+                <p>
+                  <b>Lần cuối:</b> {selectedWord.LastReviewDate || "-"}
+                </p>
+
+                <p>
+                  <b>Trạng thái:</b>{" "}
+                  {toBool(selectedWord.IsLearned) ? "⭐ Đã học" : "📖 Chưa học"}
+                </p>
+              </div>
+
+              {/* CARD 3 */}
+
+              <div className="flex flex-col gap-4">
+                <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
+                  <p className="font-semibold">Ví dụ</p>
+
+                  <p>{selectedWord.ExampleSentence || "Chưa có ví dụ"}</p>
+
+                  <p className="text-sm opacity-70">
+                    {selectedWord.ExampleMeaning || ""}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                  <p className="font-semibold">📝 Ghi chú</p>
+
+                  <textarea
+                    className="w-full p-3 rounded-lg border bg-transparent resize-none"
+                    rows={6}
+                    value={selectedWord.Note || ""}
+                    onChange={(e) =>
+                      updateNote(e.target.value, selectedWord.Id)
+                    }
+                    placeholder="Nhập ghi chú..."
+                  />
+
+                  <div className="text-xs mt-2 opacity-70">
+                    {savingNote
+                      ? "💾 Đang lưu..."
+                      : noteSaved
+                        ? "✅ Đã lưu"
+                        : ""}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* SMART SRS DISPLAY (NEW UX) */}
-            <div className="text-sm space-y-1 p-3 rounded bg-black/5">
-              <p>
-                🔁 <b>Số lần ôn:</b> {selectedWord.Repetition}
-              </p>
-
-              <p>
-                ⏳ <b>Lần ôn tiếp:</b>{" "}
-                {formatInterval(selectedWord.IntervalDays)}
-              </p>
-
-              <p>
-                📊 <b>Độ khó:</b> {formatEase(selectedWord.EaseFactor)}
-              </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSelectedWord(null)}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg"
+              >
+                Đóng
+              </button>
             </div>
-
-            {/* INSIGHT */}
-            <p className="text-xs opacity-60">
-              💡 Hệ thống sẽ tự điều chỉnh tần suất ôn dựa trên mức độ nhớ của
-              bạn.
-            </p>
-
-            <button
-              onClick={() => setSelectedWord(null)}
-              className="mt-2 px-4 py-2 bg-red-500 text-white rounded"
-            >
-              Đóng
-            </button>
           </div>
         </div>
       )}

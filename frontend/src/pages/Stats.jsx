@@ -15,7 +15,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// ================= SAFE =================
 const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 export default function Stats() {
@@ -43,7 +42,7 @@ export default function Stats() {
         setStatsData({
           totalWords: data?.totalWords ?? 0,
           masteredWords: data?.masteredWords ?? 0,
-          weakWords: data?.weakWords ?? 0,
+          weakWords: data?.weakWords ?? data?.dueWords ?? 0,
           newWords: data?.newWords ?? 0,
           avgScore: data?.avgScore ?? 0,
         });
@@ -74,21 +73,10 @@ export default function Stats() {
   }, []);
 
   // ================= CALC =================
-
   const progress = useMemo(() => {
     return statsData.totalWords > 0
       ? Math.round((statsData.masteredWords / statsData.totalWords) * 100)
       : 0;
-  }, [statsData]);
-
-  const remainingWords = useMemo(() => {
-    return Math.max(
-      statsData.totalWords -
-        statsData.masteredWords -
-        statsData.weakWords -
-        statsData.newWords,
-      0,
-    );
   }, [statsData]);
 
   const insight = useMemo(() => {
@@ -106,17 +94,16 @@ export default function Stats() {
     }));
   }, [weeklyScore]);
 
-  // ================= PIE (FIXED SRS MODEL) =================
+  // ================= PIE (FIXED) =================
   const pieData = useMemo(() => {
     return [
       { name: "Đã thuộc", value: statsData.masteredWords },
       { name: "Cần ôn", value: statsData.weakWords },
       { name: "Mới", value: statsData.newWords },
-      { name: "Chưa học", value: remainingWords },
     ];
-  }, [statsData, remainingWords]);
+  }, [statsData]);
 
-  const totalWords = statsData.totalWords;
+  const COLORS = ["#22c55e", "#f59e0b", "#3b82f6"];
 
   // ================= LOADING =================
   if (loading) {
@@ -124,20 +111,6 @@ export default function Stats() {
       <div className="p-2 space-y-3">
         <Card>
           <div className="h-4 w-1/3 bg-[var(--card2)] animate-pulse rounded" />
-          <div className="h-3 w-1/2 mt-2 bg-[var(--card2)] animate-pulse rounded" />
-        </Card>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <div className="h-6 w-1/2 bg-[var(--card2)] animate-pulse rounded" />
-              <div className="h-4 w-1/3 mt-2 bg-[var(--card2)] animate-pulse rounded" />
-            </Card>
-          ))}
-        </div>
-
-        <Card>
-          <div className="h-[200px] bg-[var(--card2)] animate-pulse rounded" />
         </Card>
       </div>
     );
@@ -162,7 +135,7 @@ export default function Stats() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Card>
           <p className="text-xs text-[var(--muted)]">Tổng</p>
-          <h2 className="text-xl font-bold">{totalWords}</h2>
+          <h2 className="text-xl font-bold">{statsData.totalWords}</h2>
         </Card>
 
         <Card>
@@ -235,30 +208,20 @@ export default function Stats() {
                 innerRadius={45}
                 outerRadius={65}
               >
-                <Cell fill="var(--primary)" />
-                <Cell fill="var(--warning)" />
-                <Cell fill="blue" />
-                <Cell fill="gray" />
+                {pieData.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i]} />
+                ))}
               </Pie>
             </PieChart>
 
             <div className="text-xs space-y-1">
-              <div>Total: {totalWords}</div>
+              <div>Total: {statsData.totalWords}</div>
 
               {pieData.map((d, i) => (
                 <div key={i} className="flex gap-2 items-center">
                   <span
                     className="w-2 h-2 rounded-full"
-                    style={{
-                      background:
-                        i === 0
-                          ? "var(--primary)"
-                          : i === 1
-                            ? "var(--warning)"
-                            : i === 2
-                              ? "blue"
-                              : "gray",
-                    }}
+                    style={{ background: COLORS[i] }}
                   />
                   {d.name}: {d.value}
                 </div>

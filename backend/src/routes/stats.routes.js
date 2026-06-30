@@ -12,7 +12,7 @@ router.get("/", verifyToken, async (req, res) => {
     const request = pool.request();
     request.input("userId", sql.Int, userId);
 
-    // ================= SINGLE QUERY (OPTIMIZED) =================
+    // ================= MAIN STATS =================
     const result = await request.query(`
       SELECT
         COUNT(*) AS totalWords,
@@ -28,7 +28,7 @@ router.get("/", verifyToken, async (req, res) => {
 
         SUM(
           CASE 
-            WHEN IsLearned = 0 AND NextReview > GETDATE() THEN 1 
+            WHEN IsLearned = 0 AND (NextReview IS NULL OR NextReview > GETDATE()) THEN 1 
             ELSE 0 
           END
         ) AS newWords,
@@ -74,7 +74,7 @@ router.get("/", verifyToken, async (req, res) => {
     res.json({
       totalWords: stats.totalWords || 0,
       masteredWords: stats.masteredWords || 0,
-      dueWords: stats.dueWords || 0,
+      weakWords: stats.dueWords || 0, // ✅ FIX mapping
       newWords: stats.newWords || 0,
       avgScore: parseFloat(stats.avgScore || 0),
       weeklyScore: last7Days,

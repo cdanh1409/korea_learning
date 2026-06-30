@@ -10,7 +10,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Words from "./pages/Words";
 import PrivateRoute from "./routes/PrivateRoute";
-
+import PlacementTest from "./pages/PlacementTest";
 
 function App() {
   return (
@@ -38,6 +38,7 @@ function App() {
           <Route path="stats" element={<Stats />} />
           <Route path="settings" element={<Settings />} />
           <Route path="words" element={<Words />} />
+          <Route path="placement-test" element={<PlacementTest />} />
         </Route>
       </Routes>
     </BrowserRouter>

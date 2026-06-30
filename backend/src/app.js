@@ -36,6 +36,7 @@ app.use("/api/settings", require("./routes/settings.routes"));
 app.use("/api/user", require("./routes/user.routes"));
 app.use("/api/words", require("./routes/word.routes"));
 app.use("/api/notifications", require("./routes/notificationBell.routes"));
+app.use("/api/placement-test", require("./routes/placement.routes"));
 
 app.get("/", (req, res) => {
   res.json({ ok: true });

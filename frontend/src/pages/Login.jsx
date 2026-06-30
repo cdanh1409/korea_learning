@@ -14,10 +14,11 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
 
-  // ================= HANDLE INPUT =================
+  // ================= INPUT =================
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -25,16 +26,31 @@ export default function Login() {
       ...prev,
       [name]: value,
     }));
+
+    setError("");
+  };
+
+  // ================= VALIDATE =================
+  const validate = () => {
+    if (!form.email || !form.password) {
+      setError("Vui lòng nhập đầy đủ thông tin");
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      setError("Email không hợp lệ");
+      return false;
+    }
+
+    return true;
   };
 
   // ================= SUBMIT =================
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.email || !form.password) {
-      alert("Vui lòng nhập đầy đủ thông tin");
-      return;
-    }
+    if (!validate()) return;
 
     try {
       setLoading(true);
@@ -42,7 +58,7 @@ export default function Login() {
       const { data } = await api.post("/auth/login", form);
 
       if (!data?.token) {
-        alert(data?.message || "Login failed");
+        setError(data?.message || "Login failed");
         return;
       }
 
@@ -53,7 +69,8 @@ export default function Login() {
       navigate("/");
     } catch (err) {
       console.error("LOGIN ERROR:", err);
-      alert(err?.response?.data?.message || "Login failed");
+
+      setError(err?.response?.data?.message || "Sai email hoặc mật khẩu");
     } finally {
       setLoading(false);
     }
@@ -70,9 +87,7 @@ export default function Login() {
 
             <h1>TOPIK AI</h1>
 
-            <p>
-              Học từ vựng TOPIK bằng AI, SRS và hệ thống thống kê thông minh.
-            </p>
+            <p>Học từ vựng TOPIK bằng AI và SRS thông minh</p>
           </div>
         </div>
 
@@ -80,8 +95,10 @@ export default function Login() {
         <div className="login-right">
           <form className="login-form" onSubmit={handleSubmit}>
             <h2 className="login-title">Welcome Back 👋</h2>
+            <p className="login-subtitle">Đăng nhập để tiếp tục</p>
 
-            <p className="login-subtitle">Đăng nhập để tiếp tục học TOPIK</p>
+            {/* ERROR */}
+            {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
 
             {/* EMAIL */}
             <input
@@ -92,6 +109,7 @@ export default function Login() {
               onChange={handleChange}
               className="login-input"
               autoComplete="email"
+              disabled={loading}
             />
 
             {/* PASSWORD */}
@@ -104,13 +122,13 @@ export default function Login() {
                 onChange={handleChange}
                 className="login-input"
                 autoComplete="current-password"
+                disabled={loading}
               />
 
               <button
                 type="button"
                 className="toggle-password"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setShowPassword((prev) => !prev)}
+                onClick={() => setShowPassword((p) => !p)}
               >
                 {showPassword ? "🙈" : "👁"}
               </button>
@@ -123,7 +141,7 @@ export default function Login() {
 
             {/* LINK */}
             <div className="login-link">
-              Chưa có tài khoản? <Link to="/register">Đăng ký ngay</Link>
+              Chưa có tài khoản? <Link to="/register">Đăng ký</Link>
             </div>
           </form>
         </div>

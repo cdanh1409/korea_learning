@@ -1,66 +1,95 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import { useNavigate } from "react-router-dom";
+
 import Card from "../components/common/Card";
+
 import api from "../utils/api";
 
 import {
+  ResponsiveContainer,
   LineChart,
   Line,
   XAxis,
   YAxis,
   Tooltip,
-  ResponsiveContainer,
   CartesianGrid,
   PieChart,
   Pie,
   Cell,
 } from "recharts";
 
-// ================= SAFE =================
 const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
+
+const COLORS = ["#6366f1", "#06b6d4"];
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
   const [user, setUser] = useState("");
 
   const [stats, setStats] = useState({
     newWords: 0,
+
     reviewedWords: 0,
+
     streak: 0,
   });
 
   const [weeklyData, setWeeklyData] = useState([]);
-  const [topik, setTopik] = useState({ level12: 0, level34: 0 });
 
-  const [weekGoal, setWeekGoal] = useState({
-    new: { current: 0, total: 60 },
-    review: { current: 0, total: 50 },
-    exercise: { current: 0, total: 20 },
+  const [topik, setTopik] = useState({
+    level12: 0,
+
+    level34: 0,
   });
 
-  // ================= FETCH =================
+  const [weekGoal, setWeekGoal] = useState({
+    new: {
+      current: 0,
+
+      total: 60,
+    },
+
+    review: {
+      current: 0,
+
+      total: 50,
+    },
+
+    exercise: {
+      current: 0,
+
+      total: 20,
+    },
+  });
+
   useEffect(() => {
     const token = localStorage.getItem("token");
 
     if (!token) {
       navigate("/login", { replace: true });
+
       return;
     }
 
-    const fetchData = async () => {
+    const fetchDashboard = async () => {
       try {
         const [dashboardRes, profileRes] = await Promise.all([
           api.get("/dashboard/summary"),
-          api.get("/user/profile"), // sửa theo route thực tế
+
+          api.get("/user/profile"),
         ]);
 
-        const data = dashboardRes.data;
+        const data = dashboardRes.data || {};
 
         setUser(profileRes.data?.fullName || "User");
 
         setStats({
           newWords: safeNumber(data?.stats?.newWords),
+
           reviewedWords: safeNumber(data?.stats?.reviewedWords),
+
           streak: safeNumber(data?.stats?.streak),
         });
 
@@ -68,21 +97,27 @@ export default function Dashboard() {
 
         setTopik({
           level12: safeNumber(data?.topik?.level12),
+
           level34: safeNumber(data?.topik?.level34),
         });
 
         setWeekGoal({
           new: {
             current: safeNumber(data?.weekGoal?.new?.current),
-            total: 60,
+
+            total: safeNumber(data?.weekGoal?.new?.total || 60),
           },
+
           review: {
             current: safeNumber(data?.weekGoal?.review?.current),
-            total: 50,
+
+            total: safeNumber(data?.weekGoal?.review?.total || 50),
           },
+
           exercise: {
             current: safeNumber(data?.weekGoal?.exercise?.current),
-            total: 20,
+
+            total: safeNumber(data?.weekGoal?.exercise?.total || 20),
           },
         });
       } catch (err) {
@@ -90,216 +125,269 @@ export default function Dashboard() {
 
         if (err?.response?.status === 401) {
           localStorage.removeItem("token");
-          navigate("/login", { replace: true });
+
+          navigate("/login", {
+            replace: true,
+          });
         }
       }
     };
 
-    fetchData();
+    fetchDashboard();
   }, [navigate]);
 
-  // ================= PROGRESS =================
-  const progress =
-    stats.reviewedWords > 0 ? Math.round((stats.reviewedWords / 50) * 100) : 0;
+  const progress = useMemo(() => {
+    if (!weekGoal.review.total) return 0;
 
-  // ================= CHART DATA =================
-  const chartData = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
+    return Math.min(
+      100,
+      Math.round((weekGoal.review.current / weekGoal.review.total) * 100),
+    );
+  }, [weekGoal.review.current, weekGoal.review.total]);
 
-    const value = safeNumber(weeklyData?.[i]);
+  const chartData = useMemo(() => {
+    return Array.from({ length: 7 }).map((_, index) => {
+      const d = new Date();
 
-    return {
-      day: d.toLocaleDateString("vi-VN", { weekday: "short" }),
-      reviews: value,
-    };
-  });
+      d.setDate(d.getDate() - (6 - index));
 
-  // ================= TOPIK =================
-  const level12 = safeNumber(topik?.level12);
-  const level34 = safeNumber(topik?.level34);
+      return {
+        day: d.toLocaleDateString("vi-VN", {
+          weekday: "short",
+        }),
+
+        reviews: safeNumber(weeklyData[index]),
+      };
+    });
+  }, [weeklyData]);
+
+  const level12 = safeNumber(topik.level12);
+
+  const level34 = safeNumber(topik.level34);
+
   const totalTopik = level12 + level34;
 
   const pieData =
-    totalTopik > 0
-      ? [
-          { name: "TOPIK I", value: level12 },
-          { name: "TOPIK II", value: level34 },
-        ]
-      : [{ name: "EMPTY", value: 1 }];
+    totalTopik === 0
+      ? [{ name: "Empty", value: 1 }]
+      : [
+          {
+            name: "TOPIK I",
 
-  const COLORS = ["#6366f1", "#94a3b8"];
+            value: level12,
+          },
+
+          {
+            name: "TOPIK II",
+
+            value: level34,
+          },
+        ];
 
   return (
-    <div className="p-2 space-y-2 min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <div className="min-h-screen p-5 space-y-5 bg-[var(--bg)] text-[var(--text)]">
       {/* HERO */}
+
       <div
         className="
-        rounded-3xl px-6 py-5 border
+
+        relative
+
+        overflow-hidden
+
+        rounded-3xl
+
+        border
+
         bg-[var(--card)]
-        flex items-center justify-between
-        overflow-hidden relative
-        min-h-[220px]
+
+        px-8
+
+        py-8
+
+        flex
+
+        justify-between
+
+        items-center
+
       "
       >
-        {/* LEFT */}
-        <div className="relative z-10 max-w-2xl">
-          <h1
-            className="
-      text-4xl font-extrabold
-      tracking-tight
-      italic
-    "
-            style={{
-              color: "var(--text)",
-            }}
-          >
-            Xin chào, {user} 👋
-          </h1>
-
-          <p
-            className="
-      mt-4 text-base leading-8
-      font-medium italic
-    "
-            style={{
-              color: "var(--muted)",
-            }}
-          >
-            Học từ vựng tiếng Hàn thông minh với AI.
-            <br />
-            <span
-              className="font-semibold"
-              style={{
-                color: "var(--text)",
-              }}
-            >
-              Cá nhân hoá lộ trình học tập và ôn tập đúng thời điểm
-            </span>{" "}
-            theo phương pháp{" "}
-            <span
-              className="
-        font-bold italic
-      "
-              style={{
-                color: "var(--primary)",
-              }}
-            >
-              Spaced Repetition
-            </span>
-            .
-          </p>
-        </div>
-
-        {/* RIGHT IMAGE */}
-        <div className="relative z-10 hidden md:flex">
-          <img
-            src="http://localhost:5000/images/dashboard.png"
-            alt="dashboard"
-            className="
-        w-52 object-contain
-        select-none pointer-events-none
-      "
-            style={{
-              filter: "drop-shadow(0 0 20px rgba(99,102,241,0.22))",
-            }}
-          />
-        </div>
-
-        {/* GLOW */}
         <div
-          className="
-      absolute right-0 top-0
-      w-56 h-56 rounded-full
-      blur-3xl opacity-10
-    "
+          className="absolute -top-20 -right-20 w-72 h-72 rounded-full opacity-10 blur-3xl"
           style={{
             background: "var(--primary)",
           }}
         />
+
+        <div className="z-10 max-w-2xl">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[var(--card2)]">
+            🇰🇷 Korean Learning AI
+          </span>
+
+          <h1 className="mt-4 text-4xl font-extrabold tracking-tight">
+            Xin chào, {user} 👋
+          </h1>
+
+          <p className="mt-5 leading-8 text-[var(--muted)]">
+            Chào mừng bạn quay trở lại.
+            <br />
+            Học từ vựng tiếng Hàn theo phương pháp
+            <span className="font-bold text-[var(--primary)]">
+              {" "}
+              Spaced Repetition
+            </span>
+            , theo dõi tiến độ và luyện tập mỗi ngày để đạt mục tiêu TOPIK.
+          </p>
+
+          <div className="flex flex-wrap gap-3 mt-8">
+            <button
+              onClick={() => navigate("/learn")}
+              className="px-5 py-3 rounded-xl font-semibold bg-[var(--primary)] text-white hover:opacity-90 transition"
+            >
+              Bắt đầu học
+            </button>
+
+            <button
+              onClick={() => navigate("/review")}
+              className="px-5 py-3 rounded-xl border hover:bg-[var(--card2)] transition"
+            >
+              Ôn tập
+            </button>
+          </div>
+        </div>
+
+        <div className="hidden lg:flex relative z-10">
+          <img
+            src="http://localhost:5000/images/dashboard.png"
+            alt="Dashboard"
+            className="w-72 object-contain select-none pointer-events-none"
+            style={{
+              filter: "drop-shadow(0 20px 40px rgba(99,102,241,.35))",
+            }}
+          />
+        </div>
       </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <p>Tiến độ tuần</p>
-          <p className="text-2xl font-bold">{progress}%</p>
 
-          <div className="h-2 bg-[var(--card2)] rounded mt-2">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="transition hover:-translate-y-1 hover:shadow-xl">
+          <p className="text-sm opacity-70">Tiến độ tuần</p>
+
+          <div className="mt-3 flex items-end justify-between">
+            <h2 className="text-3xl font-bold">{progress}%</h2>
+
+            <span className="text-xs opacity-60">mục tiêu</span>
+          </div>
+
+          <div className="mt-5 h-3 rounded-full bg-[var(--card2)] overflow-hidden">
             <div
-              className="h-2 bg-[var(--primary)] rounded"
-              style={{ width: `${progress}%` }}
+              className="h-full rounded-full bg-[var(--primary)] transition-all duration-700"
+              style={{
+                width: `${progress}%`,
+              }}
             />
           </div>
         </Card>
 
-        <Card>
-          <p>Từ chưa học</p>
-          <p className="text-2xl font-bold">{stats.newWords}</p>
+        <Card className="transition hover:-translate-y-1 hover:shadow-xl">
+          <p className="text-sm opacity-70">Từ chưa học</p>
+
+          <h2 className="mt-4 text-3xl font-bold">{stats.newWords}</h2>
+
+          <p className="mt-3 text-xs opacity-60">Từ mới đang chờ bạn học</p>
         </Card>
 
-        <Card>
-          <p>Đã học (7 ngày)</p>
-          <p className="text-2xl font-bold">{stats.reviewedWords}</p>
+        <Card className="transition hover:-translate-y-1 hover:shadow-xl">
+          <p className="text-sm opacity-70">Đã học (7 ngày)</p>
+
+          <h2 className="mt-4 text-3xl font-bold">{stats.reviewedWords}</h2>
+
+          <p className="mt-3 text-xs opacity-60">Tổng số từ đã ôn tập</p>
         </Card>
 
-        <Card>
-          <p>Chuỗi</p>
-          <p className="text-2xl font-bold">🔥 {stats.streak}</p>
+        <Card className="transition hover:-translate-y-1 hover:shadow-xl">
+          <p className="text-sm opacity-70">Chuỗi học</p>
+
+          <h2 className="mt-4 text-3xl font-bold">🔥 {stats.streak}</h2>
+
+          <p className="mt-3 text-xs opacity-60">Hãy duy trì mỗi ngày</p>
         </Card>
       </div>
 
       {/* CHARTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* LINE CHART */}
-        <Card className="col-span-1 lg:col-span-2">
-          <h3>Thống kê học tập 7 ngày gần nhất</h3>
 
-          <ResponsiveContainer width="100%" height={250}>
+      <div className="grid gap-4 grid-cols-1 xl:grid-cols-4">
+        <Card className="xl:col-span-2">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="font-bold text-lg">
+              Thống kê học tập 7 ngày gần nhất
+            </h3>
+
+            <span className="text-xs opacity-60">7 ngày</span>
+          </div>
+
+          <ResponsiveContainer width="100%" height={280}>
             <LineChart data={chartData}>
-              <CartesianGrid opacity={0.2} />
+              <CartesianGrid opacity={0.15} />
+
               <XAxis dataKey="day" />
+
               <YAxis />
+
               <Tooltip />
+
               <Line
-                type="monotone"
                 dataKey="reviews"
+                type="monotone"
                 stroke="#6366f1"
-                strokeWidth={3}
+                strokeWidth={4}
+                dot={{
+                  r: 4,
+                }}
+                activeDot={{
+                  r: 7,
+                }}
               />
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
         {/* PIE CHART */}
+
         <Card>
-          <h3>Số từ đã học theo trình độ Topik</h3>
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-bold text-lg">Phân bố từ đã học</h3>
+
+            <span className="text-xs opacity-60">TOPIK</span>
+          </div>
 
           {totalTopik === 0 ? (
-            <div className="h-[220px] flex items-center justify-center text-sm opacity-60">
+            <div className="h-[260px] flex items-center justify-center text-sm opacity-60">
               Chưa có dữ liệu TOPIK
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie
                   data={pieData}
                   dataKey="value"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={4}
+                  innerRadius={65}
+                  outerRadius={90}
+                  paddingAngle={5}
                 >
-                  {pieData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i]} />
+                  {pieData.map((item, index) => (
+                    <Cell key={item.name} fill={COLORS[index]} />
                   ))}
                 </Pie>
 
                 <text
                   x="50%"
-                  y="45%"
+                  y="47%"
                   textAnchor="middle"
-                  fontSize={22}
-                  fontWeight="bold"
+                  fontSize={28}
+                  fontWeight="700"
                   fill="var(--text)"
                 >
                   {totalTopik}
@@ -307,7 +395,7 @@ export default function Dashboard() {
 
                 <text
                   x="50%"
-                  y="60%"
+                  y="61%"
                   textAnchor="middle"
                   fontSize={12}
                   fill="var(--muted)"
@@ -320,35 +408,100 @@ export default function Dashboard() {
             </ResponsiveContainer>
           )}
 
-          <div className="flex justify-center gap-4 text-sm mt-2">
-            <span style={{ color: COLORS[0] }}>■ TOPIK I</span>
-            <span style={{ color: COLORS[1] }}>■ TOPIK II</span>
+          <div className="flex justify-center gap-6 mt-4">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{
+                  background: COLORS[0],
+                }}
+              />
+
+              <span className="text-sm">TOPIK I ({level12})</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{
+                  background: COLORS[1],
+                }}
+              />
+
+              <span className="text-sm">TOPIK II ({level34})</span>
+            </div>
           </div>
         </Card>
 
-        {/* GOALS */}
-        <Card>
-          <h3>Mục tiêu</h3>
+        {/* GOAL */}
 
-          <Row label="Đã học" value={weekGoal.review} />
-          <Row label="Chưa học" value={weekGoal.new} />
-          <Row label="Bài tập" value={weekGoal.exercise} />
+        <Card>
+          <h3 className="font-bold text-lg mb-5">Mục tiêu tuần</h3>
+
+          <GoalRow label="Đã học" value={weekGoal.review} />
+
+          <GoalRow label="Từ mới" value={weekGoal.new} />
+
+          <GoalRow label="Bài tập" value={weekGoal.exercise} />
+
+          <div className="mt-8">
+            <div className="flex justify-between text-sm mb-2">
+              <span>Hoàn thành</span>
+
+              <span>{progress}%</span>
+            </div>
+
+            <div className="h-3 rounded-full bg-[var(--card2)] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[var(--primary)] transition-all duration-700"
+                style={{
+                  width: `${progress}%`,
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl bg-[var(--card2)] p-4">
+            <p className="font-semibold">💡 Gợi ý hôm nay</p>
+
+            <p className="text-sm mt-2 opacity-70 leading-6">
+              Hãy hoàn thành ít nhất
+              <strong> 20 từ ôn tập </strong>
+              để duy trì chuỗi học và tăng khả năng ghi nhớ.
+            </p>
+          </div>
         </Card>
       </div>
     </div>
   );
 }
 
-// ================= ROW =================
-function Row({ label, value }) {
-  const safe = (v) => (isNaN(Number(v)) ? 0 : Number(v));
+function GoalRow({ label, value }) {
+  const current = safeNumber(value?.current);
+
+  const total = safeNumber(value?.total);
+
+  const percent =
+    total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
 
   return (
-    <div className="flex justify-between text-sm py-1">
-      <span>{label}</span>
-      <span>
-        {safe(value?.current)}/{safe(value?.total)}
-      </span>
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium">{label}</span>
+
+        <span className="text-sm opacity-70">
+          {current}/{total}
+        </span>
+      </div>
+
+      <div className="h-2 rounded-full bg-[var(--card2)] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-[var(--primary)] transition-all duration-700"
+          style={{
+            width: `${percent}%`,
+          }}
+        />
+      </div>
     </div>
   );
 }

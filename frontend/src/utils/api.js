@@ -1,6 +1,5 @@
 import axios from "axios";
 
-// ================= CREATE INSTANCE =================
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   headers: {
@@ -9,30 +8,22 @@ const api = axios.create({
 });
 
 // ================= REQUEST INTERCEPTOR =================
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
 
-  console.log("================================");
-  console.log("📦 API:", config.url);
-  console.log("🔑 TOKEN RAW:", token);
-  console.log("🔑 TOKEN TYPE:", typeof token);
-  console.log("================================");
+    if (import.meta.env.DEV) {
+      console.log("📦 API:", config.url);
+    }
 
-  if (!token) {
-    console.log("❌ TOKEN MISSING → REQUEST WITHOUT AUTH");
-  }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  if (token) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
-
-    console.log("✅ AUTH HEADER ATTACHED");
-  }
-
-  return config;
-});
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
 
 // ================= RESPONSE INTERCEPTOR =================
 api.interceptors.response.use(
@@ -40,10 +31,7 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
 
-    // 🔥 auto logout nếu token sai
     if (status === 401) {
-      console.log("❌ TOKEN INVALID → LOGOUT");
-
       localStorage.removeItem("token");
       window.location.href = "/login";
     }

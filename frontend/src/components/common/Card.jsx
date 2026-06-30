@@ -2,8 +2,7 @@ export default function Card({ children, className = "" }) {
   return (
     <div
       className={`
-        group relative w-full
-        min-w-0  
+group relative w-full overflow-hidden        min-w-0  
         min-h-0
 
         rounded-2xl p-5
@@ -26,11 +25,11 @@ export default function Card({ children, className = "" }) {
       {/* Glow */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-500 pointer-events-none isolate">
         <div
-          className="absolute -top-24 -left-24 w-72 h-72 rounded-full blur-[120px] opacity-30"
+          className="absolute -top-24 -left-24 w-72 h-72 rounded-full blur-[90px] opacity-30"
           style={{ background: "var(--primary)" }}
         />
         <div
-          className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full blur-[120px] opacity-20"
+          className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full blur-[90px] opacity-20"
           style={{ background: "#ec4899" }}
         />
       </div>

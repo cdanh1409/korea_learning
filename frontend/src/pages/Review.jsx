@@ -232,27 +232,6 @@ export default function Review() {
       </div>
     );
   }
-  if (forceLearnFirst) {
-    return (
-      <div className="flex justify-center p-6">
-        <Card className="p-10 text-center space-y-4 max-w-md">
-          <h2 className="text-2xl font-bold">📚 Chưa có từ vựng</h2>
-
-          <p className="text-[var(--muted)]">
-            Bạn cần học từ vựng trước khi ôn tập
-          </p>
-
-          <button
-            onClick={() => (window.location.href = "/learn")}
-            className="px-6 py-3 rounded-xl text-white"
-            style={{ background: "var(--primary)" }}
-          >
-            🚀 Đi học từ vựng
-          </button>
-        </Card>
-      </div>
-    );
-  }
   // ================= UI =================
   return (
     <div className="p-6 space-y-6 min-h-screen bg-[var(--bg)] text-[var(--text)]">
