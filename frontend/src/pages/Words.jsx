@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import axios from "axios";
 
 import Card from "../components/common/Card";
 import api from "../utils/api";
@@ -6,6 +7,9 @@ import api from "../utils/api";
 /* ================= CONSTANTS ================= */
 const LEVELS = ["all", "Sơ cấp", "Trung cấp", "Cao cấp"];
 const PAGE_SIZE = 10;
+
+/* ================= HELPERS ================= */
+const toBool = (v) => v === true || v === 1 || v === "1";
 
 /* ================= PAGINATION ================= */
 const getPagination = (page, totalPages) => {
@@ -44,6 +48,7 @@ export default function Words() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  const [allTopics, setAllTopics] = useState([]);
   const [selectedWord, setSelectedWord] = useState(null);
 
   const [loading, setLoading] = useState(false);
@@ -52,60 +57,96 @@ export default function Words() {
   const [savingNote, setSavingNote] = useState(false);
   const [noteSaved, setNoteSaved] = useState(true);
 
+  /* ================= REFS ================= */
+  const controllerRef = useRef(null);
+  const requestIdRef = useRef(0);
   const noteTimeout = useRef(null);
 
-  /* ================= LOAD FROM BE ================= */
+  /* ================= TOPICS ================= */
+  useEffect(() => {
+    const fetchTopics = async () => {
+      try {
+        const res = await api.get("/words/topics");
+        setAllTopics(res.data?.data || []);
+      } catch (err) {
+        console.error("GET TOPICS ERROR:", err);
+      }
+    };
+
+    fetchTopics();
+  }, []);
+
+  const topics = useMemo(() => {
+    return ["all", ...allTopics.map((t) => t?.Name).filter(Boolean)];
+  }, [allTopics]);
+
+  /* ================= PAGE CLAMP ================= */
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages || 1));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, topic, level]);
+
+  /* ================= LOAD WORDS ================= */
   const loadWords = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
+      // cancel previous request
+      if (controllerRef.current) {
+        controllerRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      controllerRef.current = controller;
+
+      const requestId = ++requestIdRef.current;
+
+      const safePage = Math.max(1, Math.min(page, totalPages || 1));
+
       const res = await api.get("/words", {
         params: {
-          page,
+          page: safePage,
           pageSize: PAGE_SIZE,
           search,
           topic,
           level,
         },
+        signal: controller.signal,
       });
+
+      // ignore stale response
+      if (requestId !== requestIdRef.current) return;
 
       setData(res.data?.data || []);
       setTotalPages(res.data?.totalPages || 1);
-    } catch {
-      setError("Không tải được dữ liệu từ server");
+    } catch (err) {
+      if (!axios.isCancel(err)) {
+        setError("Không tải được dữ liệu từ server");
+      }
     } finally {
       setLoading(false);
     }
-  }, [page, search, topic, level]);
+  }, [page, search, topic, level, totalPages]);
 
   useEffect(() => {
     loadWords();
   }, [loadWords]);
 
-  /* ================= RESET PAGE ================= */
-  useEffect(() => {
-    setPage(1);
-  }, [search, topic, level]);
-
-  /* ================= TOPICS ================= */
-  const topics = useMemo(() => {
-    const set = new Set();
-    for (const w of data) if (w.TopicName) set.add(w.TopicName);
-    return ["all", ...set];
-  }, [data]);
-
-  /* ================= PAGINATION ================= */
+  /* ================= PAGINATION UI ================= */
   const pages = useMemo(
     () => getPagination(page, totalPages),
     [page, totalPages],
   );
 
-  /* ================= NOTE UPDATE ================= */
+  /* ================= NOTE UPDATE (DEBOUNCE) ================= */
   const updateNote = useCallback((value, id) => {
     if (!id) return;
 
-    setSelectedWord((prev) => ({ ...prev, Note: value }));
+    setSelectedWord((prev) => (prev ? { ...prev, Note: value } : prev));
 
     setData((prev) =>
       prev.map((w) => (w.Id === id ? { ...w, Note: value } : w)),
@@ -120,19 +161,13 @@ export default function Words() {
       try {
         await api.put(`/words/${id}/note`, { note: value });
         setNoteSaved(true);
-      } catch (err) {
-        console.error("SAVE NOTE ERROR:", err);
+      } catch {
         setNoteSaved(false);
       } finally {
         setSavingNote(false);
       }
     }, 500);
   }, []);
-
-  /*----------------*/
-  const toBool = (v) => {
-    return v === true || v === 1 || v === "1";
-  };
 
   /* ================= SPEAK ================= */
   const speakWord = (word) => {
@@ -156,7 +191,10 @@ export default function Words() {
 
   /* ================= CLEANUP ================= */
   useEffect(() => {
-    return () => clearTimeout(noteTimeout.current);
+    return () => {
+      clearTimeout(noteTimeout.current);
+      controllerRef.current?.abort();
+    };
   }, []);
 
   /* ================= UI ================= */
@@ -179,7 +217,7 @@ export default function Words() {
           <select
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            className="p-2 rounded-lg bg-[var(--card2)]"
+            className="p-2 rounded-lg bg-[var(--card)] text-[var(--text)] border border-white/10 outline-none"
           >
             {topics.map((t) => (
               <option key={t} value={t}>
@@ -191,7 +229,7 @@ export default function Words() {
           <select
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            className="p-2 rounded-lg bg-[var(--card2)]"
+            className="p-2 rounded-lg bg-[var(--card)] text-[var(--text)] border border-white/10 outline-none"
           >
             {LEVELS.map((l) => (
               <option key={l} value={l}>
@@ -204,7 +242,7 @@ export default function Words() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 Tìm từ..."
-            className="p-2 rounded-lg bg-[var(--card2)]"
+            className="p-2 rounded-lg bg-[var(--card)] text-[var(--text)] border border-white/10 outline-none placeholder:opacity-60"
           />
         </div>
       </Card>
@@ -213,6 +251,8 @@ export default function Words() {
       <Card>
         {loading ? (
           <div className="p-6 text-center">Đang tải...</div>
+        ) : data.length === 0 ? (
+          <div className="p-6 text-center opacity-70">Không có dữ liệu</div>
         ) : (
           <table className="w-full">
             <thead>
@@ -237,7 +277,7 @@ export default function Words() {
                   <td className="p-4">{w.TopicName}</td>
                   <td className="p-4">{w.LevelName}</td>
                   <td className="p-4">
-                    {w.IsLearned ? "⭐ Đã học" : "📖 Chưa học"}
+                    {toBool(w.IsLearned) ? "⭐ Đã học" : "📖 Chưa học"}
                   </td>
                 </tr>
               ))}
@@ -248,16 +288,19 @@ export default function Words() {
 
       {/* PAGINATION */}
       <div className="flex gap-2 justify-center">
-        <button disabled={page === 1} onClick={() => setPage(page - 1)}>
+        <button
+          disabled={page === 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
           ←
         </button>
 
         {pages.map((p, i) =>
           p === "..." ? (
-            <span key={i}>...</span>
+            <span key={`dot-${i}`}>...</span>
           ) : (
             <button
-              key={i}
+              key={p}
               onClick={() => setPage(p)}
               className={page === p ? "bg-blue-500 text-white px-2" : "px-2"}
             >
@@ -268,20 +311,18 @@ export default function Words() {
 
         <button
           disabled={page === totalPages}
-          onClick={() => setPage(page + 1)}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
         >
           →
         </button>
       </div>
 
-      {/* MODAL (GIỮ NGUYÊN 100%) */}
-
+      {/* MODAL */}
       {selectedWord && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
           onClick={() => {
-            clearTimeout(noteTimeout.current);
-
+            if (savingNote) clearTimeout(noteTimeout.current);
             setSelectedWord(null);
           }}
         >
@@ -291,7 +332,6 @@ export default function Words() {
           >
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* CARD 1 */}
-
               <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
                 <h2 className="text-2xl font-bold">{selectedWord.Word}</h2>
 
@@ -312,7 +352,6 @@ export default function Words() {
               </div>
 
               {/* CARD 2 */}
-
               <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
                 <p>
                   <b>Chủ đề:</b> {selectedWord.TopicName}
@@ -341,13 +380,10 @@ export default function Words() {
               </div>
 
               {/* CARD 3 */}
-
               <div className="flex flex-col gap-4">
                 <div className="p-4 rounded-xl bg-[var(--card2)] border border-white/10 shadow-md text-sm space-y-2">
                   <p className="font-semibold">Ví dụ</p>
-
                   <p>{selectedWord.ExampleSentence || "Chưa có ví dụ"}</p>
-
                   <p className="text-sm opacity-70">
                     {selectedWord.ExampleMeaning || ""}
                   </p>

@@ -1,31 +1,33 @@
 const { pool, poolConnect, sql } = require("../config/db");
 
-/* ================= GET WORDS (PAGINATION SAFE) ================= */
+/* ================= GET WORDS (PAGINATION SAFE + FIXED FULL) ================= */
 exports.getWords = async (req, res) => {
   try {
     await poolConnect;
 
     const userId = req.user?.id || req.user;
 
+    /* ================= PAGINATION ================= */
     const page = Math.max(parseInt(req.query.page || "1"), 1);
     const pageSize = Math.min(parseInt(req.query.pageSize || "20"), 100);
     const offset = (page - 1) * pageSize;
 
-    const search = req.query.search?.trim() || "";
-    const topic = req.query.topic || "all";
-    const level = req.query.level || "all";
+    /* ================= FILTERS ================= */
+    const search = (req.query.search || "").trim();
+    const topicRaw = (req.query.topic || "all").trim();
+    const levelRaw = (req.query.level || "all").trim();
 
-    const request = pool
+    const requestData = pool
       .request()
       .input("userId", sql.Int, userId)
       .input("offset", sql.Int, offset)
-      .input("pageSize", sql.Int, pageSize)
-      .input("search", sql.NVarChar, `%${search}%`);
+      .input("pageSize", sql.Int, pageSize);
 
     let where = `WHERE 1=1`;
 
-    // SEARCH
+    /* ================= SEARCH ================= */
     if (search) {
+      requestData.input("search", sql.NVarChar, `%${search}%`);
       where += `
         AND (
           v.Word LIKE @search
@@ -34,26 +36,32 @@ exports.getWords = async (req, res) => {
       `;
     }
 
-    // TOPIC
-    if (topic && topic !== "all") {
-      where += ` AND t.Name = @topic`;
-      request.input("topic", sql.NVarChar, topic);
+    /* ================= TOPIC ================= */
+    if (topicRaw !== "all") {
+      requestData.input("topic", sql.NVarChar, topicRaw);
+      where += `
+        AND LTRIM(RTRIM(t.Name)) = @topic
+      `;
     }
 
-    // LEVEL
-    if (level && level !== "all") {
+    /* ================= LEVEL ================= */
+    if (levelRaw !== "all") {
       const levelMap = {
-        "Sơ cấp": 1,
-        "Sơ trung": 2,
-        "Trung cấp": 3,
-        "Cao cấp": 4,
+        "sơ cấp": 1,
+        "sơ trung": 2,
+        "trung cấp": 3,
+        "cao cấp": 4,
       };
 
-      where += ` AND v.Level = @level`;
-      request.input("level", sql.Int, levelMap[level] || 1);
+      const levelValue = levelMap[levelRaw.toLowerCase()] || null;
+
+      if (levelValue) {
+        requestData.input("level", sql.Int, levelValue);
+        where += ` AND v.Level = @level`;
+      }
     }
 
-    // DATA QUERY
+    /* ================= MAIN DATA QUERY ================= */
     const dataQuery = `
       SELECT
           v.Id,
@@ -101,33 +109,60 @@ exports.getWords = async (req, res) => {
       OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
     `;
 
+    /* ================= COUNT QUERY (FIXED FULL JOIN CONSISTENT) ================= */
+    const countRequest = pool.request().input("userId", sql.Int, userId);
+
+    if (search) {
+      countRequest.input("search", sql.NVarChar, `%${search}%`);
+    }
+
+    if (topicRaw !== "all") {
+      countRequest.input("topic", sql.NVarChar, topicRaw);
+    }
+
+    if (levelRaw !== "all") {
+      const levelMap = {
+        "sơ cấp": 1,
+        "sơ trung": 2,
+        "trung cấp": 3,
+        "cao cấp": 4,
+      };
+
+      const levelValue = levelMap[levelRaw.toLowerCase()] || null;
+
+      if (levelValue) {
+        countRequest.input("level", sql.Int, levelValue);
+      }
+    }
+
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM dbo.Vocabulary v
       LEFT JOIN dbo.Topics t ON t.Id = v.TopicId
+      LEFT JOIN dbo.UserVocabularyNotes un
+          ON un.UserId = @userId AND un.VocabularyId = v.Id
+      LEFT JOIN dbo.UserVocabularyProgress uv
+          ON uv.UserId = @userId AND uv.VocabularyId = v.Id
       ${where};
     `;
 
+    /* ================= EXECUTE ================= */
     const [dataResult, countResult] = await Promise.all([
-      request.query(dataQuery),
-      pool
-        .request()
-        .input("userId", sql.Int, userId)
-        .input("search", sql.NVarChar, `%${search}%`)
-        .input("topic", sql.NVarChar, topic !== "all" ? topic : null)
-        .input("level", sql.Int, null)
-        .query(countQuery),
+      requestData.query(dataQuery),
+      countRequest.query(countQuery),
     ]);
 
     const total = countResult.recordset[0].total;
+    const totalPages = Math.ceil(total / pageSize);
 
+    /* ================= RESPONSE ================= */
     res.json({
       success: true,
       data: dataResult.recordset,
       page,
       pageSize,
       total,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages,
     });
   } catch (err) {
     console.error("GET WORDS ERROR:", err);
@@ -139,6 +174,8 @@ exports.getWords = async (req, res) => {
     });
   }
 };
+
+/* ================= UPDATE NOTE (SAFE) ================= */
 exports.updateWordNote = async (req, res) => {
   try {
     await poolConnect;
@@ -186,6 +223,30 @@ exports.updateWordNote = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Không lưu được ghi chú",
+      detail: err.message,
+    });
+  }
+};
+exports.getAllTopics = async (req, res) => {
+  try {
+    await poolConnect;
+
+    const result = await pool.request().query(`
+      SELECT DISTINCT t.Name
+      FROM dbo.Topics t
+      ORDER BY t.Name
+    `);
+
+    res.json({
+      success: true,
+      data: result.recordset,
+    });
+  } catch (err) {
+    console.error("GET TOPICS ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: "Không lấy được topics",
       detail: err.message,
     });
   }

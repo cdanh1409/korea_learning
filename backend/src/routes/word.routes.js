@@ -10,4 +10,6 @@ router.get("/", verifyToken, wordController.getWords);
 // SAVE NOTE
 router.put("/:id/note", verifyToken, wordController.updateWordNote);
 
+// GET TOPICS
+router.get("/topics", wordController.getAllTopics);
 module.exports = router;
