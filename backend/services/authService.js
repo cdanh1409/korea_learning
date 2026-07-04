@@ -9,8 +9,14 @@ const jwt = require("jsonwebtoken");
 const SECRET_KEY = process.env.JWT_SECRET;
 
 // REGISTER
-exports.register = async ({ email, password }) => {
+exports.register = async (data) => {
   await poolConnect;
+
+  const { email, password } = data || {};
+
+  if (!email || !password) {
+    throw new Error("Missing email or password");
+  }
 
   const check = await pool
     .request()
