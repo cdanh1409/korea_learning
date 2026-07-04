@@ -42,6 +42,7 @@ export default function Words() {
   /* ================= STATE ================= */
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [topic, setTopic] = useState("all");
   const [level, setLevel] = useState("all");
 
@@ -62,7 +63,16 @@ export default function Words() {
   const requestIdRef = useRef(0);
   const noteTimeout = useRef(null);
 
-  /* ================= TOPICS ================= */
+  /* ================= DEBOUNCE SEARCH ================= */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400);
+
+    return () => clearTimeout(t);
+  }, [search]);
+
+  /* ================= LOAD TOPICS ================= */
   useEffect(() => {
     const fetchTopics = async () => {
       try {
@@ -87,7 +97,7 @@ export default function Words() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, topic, level]);
+  }, [debouncedSearch, topic, level]);
 
   /* ================= LOAD WORDS ================= */
   const loadWords = useCallback(async () => {
@@ -95,30 +105,23 @@ export default function Words() {
       setLoading(true);
       setError("");
 
-      // cancel previous request
-      if (controllerRef.current) {
-        controllerRef.current.abort();
-      }
-
+      controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
 
       const requestId = ++requestIdRef.current;
 
-      const safePage = Math.max(1, Math.min(page, totalPages || 1));
-
       const res = await api.get("/words", {
         params: {
-          page: safePage,
+          page,
           pageSize: PAGE_SIZE,
-          search,
+          search: debouncedSearch,
           topic,
           level,
         },
         signal: controller.signal,
       });
 
-      // ignore stale response
       if (requestId !== requestIdRef.current) return;
 
       setData(res.data?.data || []);
@@ -130,19 +133,19 @@ export default function Words() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, topic, level, totalPages]);
+  }, [page, debouncedSearch, topic, level]);
 
   useEffect(() => {
     loadWords();
   }, [loadWords]);
 
-  /* ================= PAGINATION UI ================= */
+  /* ================= PAGINATION ================= */
   const pages = useMemo(
     () => getPagination(page, totalPages),
     [page, totalPages],
   );
 
-  /* ================= NOTE UPDATE (DEBOUNCE) ================= */
+  /* ================= NOTE UPDATE ================= */
   const updateNote = useCallback((value, id) => {
     if (!id) return;
 
@@ -301,7 +304,7 @@ export default function Words() {
           ) : (
             <button
               key={p}
-              onClick={() => setPage(p)}
+              onClick={() => setPage(Math.min(p, totalPages))}
               className={page === p ? "bg-blue-500 text-white px-2" : "px-2"}
             >
               {p}
@@ -322,7 +325,7 @@ export default function Words() {
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
           onClick={() => {
-            if (savingNote) clearTimeout(noteTimeout.current);
+            controllerRef.current?.abort();
             setSelectedWord(null);
           }}
         >
@@ -356,23 +359,18 @@ export default function Words() {
                 <p>
                   <b>Chủ đề:</b> {selectedWord.TopicName}
                 </p>
-
                 <p>
                   <b>Trình độ:</b> {selectedWord.LevelName}
                 </p>
-
                 <p>
                   <b>Loại từ:</b> {selectedWord.WordType || "-"}
                 </p>
-
                 <p>
                   <b>Số lần ôn:</b> {selectedWord.Repetition}
                 </p>
-
                 <p>
                   <b>Lần cuối:</b> {selectedWord.LastReviewDate || "-"}
                 </p>
-
                 <p>
                   <b>Trạng thái:</b>{" "}
                   {toBool(selectedWord.IsLearned) ? "⭐ Đã học" : "📖 Chưa học"}
