@@ -4,6 +4,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   headers: {
     "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
   },
 });
 
@@ -26,18 +27,21 @@ api.interceptors.request.use(
 );
 
 // ================= RESPONSE INTERCEPTOR =================
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error.response?.status;
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
 
-    if (status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
-    return Promise.reject(error);
+    console.log("========== AXIOS ==========");
+    console.log("URL:", config.baseURL + config.url);
+    console.log("Headers:", config.headers);
+
+    return config;
   },
+  (error) => Promise.reject(error),
 );
 
 export default api;

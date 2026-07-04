@@ -9,7 +9,11 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "ngrok-skip-browser-warning",
+    ],
   }),
 );
 
@@ -20,8 +24,11 @@ app.use("/images", express.static(path.join(__dirname, "../public/images")));
 
 // 🔥 LOG
 app.use((req, res, next) => {
+  console.log("\n==============================");
   console.log("🔥", req.method, req.url);
   console.log("🌐 ORIGIN:", req.headers.origin);
+  console.log("🔑 AUTH:", req.headers.authorization);
+  console.log("==============================");
   next();
 });
 
