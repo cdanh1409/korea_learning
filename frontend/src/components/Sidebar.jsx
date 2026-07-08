@@ -60,7 +60,7 @@ const menu = [
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-
+  const IMAGE_BASE = import.meta.env.VITE_API_URL.replace("/api", "");
   const { darkMode } = useContext(ThemeContext);
 
   const handleLogout = () => {
@@ -81,7 +81,7 @@ export default function Sidebar() {
       {/* ================= LOGO ================= */}
       <div className="mb-6 flex items-center justify-center">
         <img
-          src="http://localhost:5000/images/logo.png"
+          src={`${IMAGE_BASE}/images/logo.png`}
           alt="TOPIK AI"
           className="
             w-40 object-contain
