@@ -22,7 +22,7 @@ import {
 const safeNumber = (v) => (isNaN(Number(v)) ? 0 : Number(v));
 
 const COLORS = ["#6366f1", "#06b6d4"];
-
+const IMAGE_BASE = import.meta.env.VITE_API_URL.replace("/api", "");
 export default function Dashboard() {
   const navigate = useNavigate();
 
@@ -259,7 +259,7 @@ export default function Dashboard() {
 
         <div className="hidden lg:flex relative z-10">
           <img
-            src="http://localhost:5000/images/dashboard.png"
+            src={`${IMAGE_BASE}/images/dashboard.png`}
             alt="Dashboard"
             className="w-72 object-contain select-none pointer-events-none"
             style={{
